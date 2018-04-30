@@ -6,6 +6,7 @@ Currently suppoty *only* the CelebA Dataset for the setting of incremental addin
 To replicate the experiments, execute
 ```bash
 $ source source.sh
+$ cd src/
 $ ./train.sh {lwf, gem, joint_train, fine_tuning}
 ```
 
