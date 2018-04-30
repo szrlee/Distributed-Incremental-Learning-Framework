@@ -1,0 +1,10 @@
+*.tar.gz
+*.png
+*.pdf
+*.bin
+*.pt
+*.txt
+*.pyc
+*.npz
+*.jpg
+*.log
