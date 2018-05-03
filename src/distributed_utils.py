@@ -4,6 +4,75 @@ import torch.distributed as dist
 from torch.nn import Module
 import multiprocessing as mp
 
+## import module for distributed subset sampler
+from torch.utils.data.sampler import Sampler
+import math
+
+class DistributedMemorySampler(Sampler):
+    """Sampler that restricts data loading to a subset of the following sampled 
+       elements as memory for previous tasks.
+       Samples elements randomly from a given list of indices, without replacement.
+
+    It is especially useful in conjunction with
+    :class:`torch.nn.parallel.DistributedDataParallel`. In such case, each
+    process can pass a DistributedSampler instance as a DataLoader sampler,
+    and load a subset of the original dataset that is exclusive to it.
+
+    .. note::
+        Dataset is assumed to be of constant size.
+
+    Arguments:
+        dataset: Dataset used for sampling.
+        num_replicas (optional): Number of processes participating in
+            distributed training.
+        rank (optional): Rank of the current process within num_replicas.
+        sample_size (optional): Number of examples sampled from dataset.
+    """
+
+    def __init__(self, dataset, num_replicas=None, rank=None, sample_size=None):
+        if num_replicas is None:
+            num_replicas = dist.get_world_size()
+        if rank is None:
+            rank = dist.get_rank()
+        self.dataset = dataset
+        dataset_size = len(self.dataset)
+        if sample_size is None or sample_size > dataset_size:
+            sample_size = dataset_size
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.epoch = 0
+        self.num_samples = int(math.ceil(sample_size * 1.0 / self.num_replicas))
+        self.total_size = self.num_samples * self.num_replicas
+
+    def __iter__(self):
+        # deterministically shuffle based on epoch
+        g = torch.Generator()
+        g.manual_seed(self.epoch)
+        indices = list(torch.randperm(len(self.dataset), generator=g))
+        if self.total_size < len(indices):
+            # select subset of dataset as memory
+            indices = indices[:self.total_size]
+        else:
+            # add extra samples to make it evenly divisible
+            indices += indices[:(self.total_size - len(indices))]
+        assert len(indices) == self.total_size
+
+        # subsample
+        offset = self.num_samples * self.rank
+        indices = indices[offset:offset + self.num_samples]
+        assert len(indices) == self.num_samples
+
+        return iter(indices)
+
+    def __len__(self):
+        return self.num_samples
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
+
+    # func for Method B
+
+
 class DistModule(Module):
     def __init__(self, module):
         super(DistModule, self).__init__()

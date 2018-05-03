@@ -11,6 +11,7 @@ import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from distributed_utils import dist_init, average_gradients, DistModule
+from distributed_utils import DistributedMemorySampler
 
 def default_loader(path):
     return Image.open(path).convert('RGB')
@@ -43,7 +44,21 @@ class MultiLabelDataset(data.Dataset):
         return len(self.images)
 
 
-def GetTasks(approach, batch_size, gpus):
+def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_size=None):
+    """Get Tasks (a list of dict) that yield sampler and dataloader for training, testing and memory dataset.
+
+    Arguments:
+        approach (string) : The name of current method for incremental learning
+        batch_size (int) : Size of mini-batch
+        gpus (int) : The number of using gpus
+        memory_size (optional) : Size of memory sampled from previous tasks (for approaces need memory)
+        memory_mini_batch_size (optional) : Size of batch size for memory in the approachs (EWC, MAS)
+            for specific gradient-related computing
+        
+    """
+    # processing information
+    rank = dist.get_rank()
+
     # Data Transforms
     normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                  std=[0.229, 0.224, 0.225])
@@ -62,7 +77,11 @@ def GetTasks(approach, batch_size, gpus):
     # Construct dataloader for every task
     Tasks = []
     fullset = np.arange(40)
+
+    print('Dataloader Process: BEGIN at rank:{rank}'.format(rank=rank))
+
     for t in range(4):
+        print('generating dataloader for task {t:2d} at rank:{rank:2d}'.format(t=t, rank=rank))
         test_subset = fullset[t*10:t*10+10]
         if approach == 'joint_train':
             train_subset = fullset[0:t*10+10]
@@ -77,9 +96,11 @@ def GetTasks(approach, batch_size, gpus):
         
         train_sampler = DistributedSampler(train_dataset)
         test_sampler = DistributedSampler(test_dataset)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=2*gpus, pin_memory=True, sampler = train_sampler)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2*gpus, pin_memory=True, sampler = test_sampler)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=2*gpus, pin_memory=True, sampler=train_sampler)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2*gpus, pin_memory=True, sampler=test_sampler)
         task = {}
+        task['train_dataset'] = train_dataset
+        task['test_dataset'] = test_dataset
         task['train_loader'] = train_loader
         task['test_loader'] = test_loader
         task['train_sampler'] = train_sampler
@@ -88,9 +109,19 @@ def GetTasks(approach, batch_size, gpus):
         task['subset'] = test_subset
         task['description'] = 'CelebA Task #' + str(t)
         task['class_num'] = 10
+        # for those Approaches that need memory
+        if memory_size is not None:
+            memory_sampler = DistributedMemorySampler(train_dataset, sample_size=memory_size)
+            memory_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=2*gpus, pin_memory=True, sampler=memory_sampler)
+            task['memory_sampler'] = memory_sampler
+            task['memory_loader']  = memory_loader
+            # if define memory_mini_batch_size (useful for the importance based approaches e.g. EWC MAS)
+            if memory_mini_batch_size is not None:
+                memory_mini_batch_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=memory_mini_batch_size, shuffle=False, num_workers=2*gpus, pin_memory=True, sampler=memory_sampler)
+                task['memory_mini_batch_loader'] = memory_mini_batch_loader
+        # append current task (dict) to Task (list)
         Tasks.append(task)
 
-    if dist.get_rank() == 0:
-        print('Data Processing ...')
+    print('Dataloader Process: DONE at rank:{rank}'.format(rank=rank))
 
     return Tasks
