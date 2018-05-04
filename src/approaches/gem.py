@@ -148,6 +148,7 @@ class Approach(object):
 
     def compute_pre_param(self, t, memory_loader, epoch, Tasks):
         self.optimizer.zero_grad()
+        mem_batch_cnt = int(len(memory_loader))
         for input, target in memory_loader:
             target = target.cuda(async=True)
             input = input.cuda()
@@ -157,10 +158,9 @@ class Approach(object):
             # compute output
             output = self.model(input_var)
             output = torch.nn.functional.sigmoid(output)
-
-            loss = self.criterion(output[:,Tasks[t]['subset']], target_var) / self.world_size
-
-            # compute gradient for each batch of mempry and accumulate
+            # compute loss divided by world_size and mem_batch_cnt
+            loss = self.criterion(output[:,Tasks[t]['subset']], target_var) / (self.world_size*mem_batch_cnt)
+            # compute gradient for each batch of memory and accumulate
             loss.backward()
         
         average_gradients(self.model)

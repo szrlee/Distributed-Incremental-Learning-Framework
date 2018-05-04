@@ -88,16 +88,20 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
         else :
             train_subset = test_subset
         train_dataset = MultiLabelDataset(root='/mnt/lustre17/tangchufeng/sensedata/CelebA/Img/img_align_celeba/',
-                                    label='/mnt/lustre17/tangchufeng/sensedata/CelebA/Anno/CelebA/train.list', transform=transform_train,
+                                    label='/mnt/lustre17/tangchufeng/sensedata/CelebA/Anno/CelebA/train.list',
+                                    transform=transform_train,
                                     subset = train_subset)
         test_dataset = MultiLabelDataset(root='/mnt/lustre17/tangchufeng/sensedata/CelebA/Img/img_align_celeba/',
-                                    label='/mnt/lustre17/tangchufeng/sensedata/CelebA/Anno/CelebA/test.list', transform=transform_test,
+                                    label='/mnt/lustre17/tangchufeng/sensedata/CelebA/Anno/CelebA/test.list', 
+                                    transform=transform_test,
                                     subset = test_subset)
         
         train_sampler = DistributedSampler(train_dataset)
         test_sampler = DistributedSampler(test_dataset)
-        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, sampler=train_sampler)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, sampler=test_sampler)
+        train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False, 
+                                                num_workers=2, pin_memory=True, sampler=train_sampler)
+        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
+                                                num_workers=2, pin_memory=True, sampler=test_sampler)
         task = {}
         task['train_dataset'] = train_dataset
         task['test_dataset'] = test_dataset
@@ -112,12 +116,16 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
         # for those Approaches that need memory
         if memory_size is not None:
             memory_sampler = DistributedMemorySampler(train_dataset, sample_size=memory_size)
-            memory_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, sampler=memory_sampler)
+            memory_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
+                                                    num_workers=2, pin_memory=True, sampler=memory_sampler,
+                                                    drop_last=True)
             task['memory_sampler'] = memory_sampler
             task['memory_loader']  = memory_loader
             # if define memory_mini_batch_size (useful for the importance based approaches e.g. EWC MAS)
             if memory_mini_batch_size is not None:
-                memory_mini_batch_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=memory_mini_batch_size, shuffle=False, num_workers=2, pin_memory=True, sampler=memory_sampler)
+                memory_mini_batch_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=memory_mini_batch_size,
+                                                                    shuffle=False, num_workers=2, pin_memory=True,
+                                                                    sampler=memory_sampler, drop_last=True)
                 task['memory_mini_batch_loader'] = memory_mini_batch_loader
         # append current task (dict) to Task (list)
         Tasks.append(task)
