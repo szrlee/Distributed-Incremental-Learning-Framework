@@ -10,8 +10,7 @@ from PIL import Image
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from distributed_utils import dist_init, average_gradients, DistModule
-from distributed_utils import DistributedMemorySampler
+from distributed_utils import dist_init, average_gradients, DistModule, DistributedMemorySampler
 
 def default_loader(path):
     return Image.open(path).convert('RGB')
