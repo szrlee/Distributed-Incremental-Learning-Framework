@@ -7,4 +7,7 @@
 *.pyc
 *.npz
 *.jpg
+
+# result
 *.log
+*.ods
