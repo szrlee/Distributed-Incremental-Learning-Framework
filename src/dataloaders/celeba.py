@@ -116,14 +116,14 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
         if memory_size is not None:
             memory_sampler = DistributedMemorySampler(train_dataset, sample_size=memory_size)
             memory_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=False,
-                                                    num_workers=2, pin_memory=True, sampler=memory_sampler,
+                                                    num_workers=2, pin_memory=False, sampler=memory_sampler,
                                                     drop_last=True)
             task['memory_sampler'] = memory_sampler
             task['memory_loader']  = memory_loader
             # if define memory_mini_batch_size (useful for the importance based approaches e.g. EWC MAS)
             if memory_mini_batch_size is not None:
                 memory_mini_batch_loader  = torch.utils.data.DataLoader(train_dataset, batch_size=memory_mini_batch_size,
-                                                                    shuffle=False, num_workers=2, pin_memory=True,
+                                                                    shuffle=False, num_workers=2, pin_memory=False,
                                                                     sampler=memory_sampler, drop_last=True)
                 task['memory_mini_batch_loader'] = memory_mini_batch_loader
         # append current task (dict) to Task (list)

@@ -11,7 +11,6 @@ import utils
 import torch.distributed as dist
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
-from distributed_utils import DistributedMemorySampler
 from distributed_utils import dist_init, average_gradients, DistModule
 
 import quadprog
@@ -147,11 +146,14 @@ class Approach(object):
         return best_accu
 
     def compute_pre_param(self, t, memory_loader, epoch, Tasks):
+        # if self.rank == 0:
+        #     print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=t))
+        # end = time.time()
         self.optimizer.zero_grad()
         mem_batch_cnt = int(len(memory_loader))
         for input, target in memory_loader:
             target = target.cuda(async=True)
-            input = input.cuda()
+            input = input.cuda(async=True)
             input_var = torch.autograd.Variable(input)
             target_var = torch.autograd.Variable(target)
 
@@ -164,6 +166,9 @@ class Approach(object):
             loss.backward()
         
         average_gradients(self.model)
+        # if self.rank == 0:
+        #     print("== END: compute grad for pre observed task: {task} | TIME: {time} ".\
+        #         format(task=t, time=(time.time()-end)) )
         return self.model.parameters
 
     def train(self, t, train_loader, epoch, Tasks):
@@ -181,23 +186,29 @@ class Approach(object):
             # compute grad for data at previous tasks
             if len(self.solved_tasks) > 0:
                 if self.rank == 0:
-                    print(self.solved_tasks)
+                    print("====== compute grad for pre observed tasks: {tasks}".format(tasks=self.solved_tasks))
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
-                    if self.rank == 0:
-                        print(pre_t)
                     ## smaple few examples from previous tasks
                     # memory_sampler = Tasks[pre_t]['memory_sampler']
                     # memory_sampler.set_epoch(epoch) # random or fix sample?
                     memory_loader = Tasks[pre_t]['memory_loader']
                     ## compute gradient for few samples in previous tasks
+                    if self.rank == 0:
+                        print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=pre_t))
+                    end_pre = time.time()
+                    #
                     pre_param = self.compute_pre_param(pre_t, memory_loader, epoch, Tasks)
+                    #
+                    if self.rank == 0:
+                        print("== END: compute grad for pre observed task: {task} | TIME: {time} ".\
+                            format(task=pre_t, time=(time.time()-end_pre)) )
                     ## copy previous grad to tensor
                     store_grad(pre_param, self.grads, self.grad_dims, pre_t)
             # ================================================================= #
             # compute grad for data at current task
             target = target.cuda(async=True)
-            input = input.cuda()
+            input = input.cuda(async=True)
             input_var = torch.autograd.Variable(input)
             target_var = torch.autograd.Variable(target)
 
@@ -211,11 +222,14 @@ class Approach(object):
             self.optimizer.zero_grad()
             loss.backward()
             average_gradients(self.model)
-            ## copy gradient for data at current task to a tensor and clear grad
-            store_grad(self.model.parameters, self.grads, self.grad_dims, t)
             # ================================================================== #
             # check grad and get new grad 
-            if len(self.solved_tasks) > 0:       
+            if len(self.solved_tasks) > 0:
+                if self.rank == 0:
+                    print("== BEGIN: check constraints; if violate, get surrogate grad.")
+                end_opt = time.time()
+                ## copy gradient for data at current task to a tensor and clear grad
+                store_grad(self.model.parameters, self.grads, self.grad_dims, t)
                 ## check if current step gradient violate constraints
                 indx = torch.cuda.LongTensor(self.solved_tasks)
                 dotp = torch.mm(self.grads[:, t].unsqueeze(0),
@@ -225,8 +239,6 @@ class Approach(object):
                 else:
                     violate_constr = False
                 ## use convex quadratic prorgamming to get surrogate grad
-                if self.rank == 0:
-                    print(violate_constr)
                 if violate_constr:
                     # if violate, use quadprog to get new grad
                     self.optimizer.zero_grad()
@@ -235,6 +247,10 @@ class Approach(object):
                     ## copy surrogate grad back to model gradient parameters
                     overwrite_grad(self.model.parameters, self.grads[:, t],
                                self.grad_dims)
+                if self.rank == 0:
+                    print("== END: violate constraints? : {vio_constr} | TIME: {time}".\
+                        format(vio_constr=violate_constr, time=(time.time()-end_opt))
+                        )
             # ================================================================= #
             # then do SGD step
             self.optimizer.step()
