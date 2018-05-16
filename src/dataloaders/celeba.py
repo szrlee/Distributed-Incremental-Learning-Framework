@@ -5,6 +5,8 @@ import utils
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
 import torch.utils.data as data
+import mc
+import io
 from PIL import Image
 
 import torch.distributed as dist
@@ -12,10 +14,18 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from distributed_utils import dist_init, average_gradients, DistModule, DistributedMemorySampler
 
+
 def default_loader(path):
     return Image.open(path).convert('RGB')
+
+def pil_loader(img_str):
+    buff = io.BytesIO(img_str)
+    with Image.open(buff) as img:
+        img = img.convert('RGB')
+    return img
+
 class MultiLabelDataset(data.Dataset):
-    def __init__(self, root, label, transform = None, subset = [], loader = default_loader):
+    def __init__(self, root, label, transform = None, subset = [], loader = pil_loader):
         images = [] 
         labels = open(label).readlines()
         for line in labels:
@@ -23,18 +33,32 @@ class MultiLabelDataset(data.Dataset):
             items = line.split() 
             img_name = items.pop(0)
             items = np.array(items)[subset]
-            if os.path.isfile(os.path.join(root, img_name)):
-                images.append((img_name, tuple([int(v) for v in items])))
-            else:
-                print(os.path.join(root, img_name) + 'Not Found.')
+            # if os.path.isfile(os.path.join(root, img_name)):
+            images.append((img_name, tuple([int(v) for v in items])))
+            # else:
+                # print(os.path.join(root, img_name) + 'Not Found.')
         self.root = root
         self.images = images
         self.transform = transform
         self.loader = loader
+        self.initialized = False
+
+    def _init_memcached(self):
+        if not self.initialized:
+            server_list_config_file = "/mnt/lustre/share/memcached_client/server_list.conf"
+            client_config_file = "/mnt/lustre/share/memcached_client/client.conf"
+            self.mclient = mc.MemcachedClient.GetInstance(server_list_config_file, client_config_file)
+            self.initialized = True
 
     def __getitem__(self, index):
+        self._init_memcached()
         img_name, label = self.images[index]
-        img = self.loader(os.path.join(self.root, img_name))
+        img_name = os.path.join(self.root, img_name)
+        value = mc.pyvector()
+        self.mclient.Get(img_name, value)
+        value_str = mc.ConvertBuffer(value)
+        img = pil_loader(value_str)
+
         if self.transform is not None:
             img = self.transform(img)
         return img, torch.Tensor(label)
