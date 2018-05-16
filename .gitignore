@@ -11,3 +11,4 @@
 # result
 *.log
 *.ods
+.vscode/
