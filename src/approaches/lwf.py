@@ -16,7 +16,7 @@ from distributed_utils import dist_init, average_gradients, DistModule
 class Approach(object):
     """ Class implementing the Learning Without Forgetting approach described in https://arxiv.org/abs/1606.09282 """
 
-    def __init__(self, model, args):
+    def __init__(self, model, args, Tasks):
         self.model = model
         self.model_old = model
 

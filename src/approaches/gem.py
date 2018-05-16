@@ -85,9 +85,9 @@ class Approach(object):
         in https://arxiv.org/abs/1706.08840
     """
 
-    def __init__(self, model, args):
+    def __init__(self, model, args, Tasks):
         self.model = model
-
+        self.Tasks = Tasks
         cudnn.benchmark = True
         self.epochs = args.epochs
         self.lr = args.lr
@@ -105,7 +105,8 @@ class Approach(object):
             self.grad_dims.append(param.data.numel())
         # currently manually set number of tasks as 4
         # TODO auto-maintain the number of total tasks
-        self.grads = torch.Tensor(sum(self.grad_dims), 4).cuda()
+        self.total_tasks = len(Tasks)
+        self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
         self.margin = args.margin # regularization parameter
         self.solved_tasks = []
 
@@ -113,7 +114,22 @@ class Approach(object):
         self.world_size = dist.get_world_size()
         self.rank = dist.get_rank()
 
+        # for prefetch memory for cache
+        self.memory_caches = [None] * self.total_tasks
+
         return
+
+    def prefetch_memory(self, t):
+        memory_loader = self.Tasks[t]['memory_loader']
+        memory_cache = []
+        for input, target in memory_loader:
+            target = target.cuda(async=True)
+            input = input.cuda(async=True)
+            # input_var = torch.autograd.Variable(input)
+            # target_var = torch.autograd.Variable(target)
+            memory_cache.append((input, target))
+
+        return memory_cache
 
     def solve(self, t, Tasks):
         task = Tasks[t]
@@ -142,18 +158,20 @@ class Approach(object):
         # then append it to solved_tasks
         if t not in self.solved_tasks:
             self.solved_tasks.append(t)
+            self.memory_caches[t] = self.prefetch_memory(t)
         
         return best_accu
 
-    def compute_pre_param(self, t, memory_loader, epoch, Tasks):
+    def compute_pre_param(self, t, memory_cache, epoch, Tasks):
         # if self.rank == 0:
         #     print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=t))
         # end = time.time()
         self.optimizer.zero_grad()
-        mem_batch_cnt = int(len(memory_loader))
-        for input, target in memory_loader:
-            target = target.cuda(async=True)
-            input = input.cuda(async=True)
+        mem_batch_cnt = int(len(memory_cache))
+        for input, target in memory_cache:
+            # target = target.cuda(async=True)
+            # input = input.cuda(async=True)
+            # input, target already loaded into GPU
             input_var = torch.autograd.Variable(input)
             target_var = torch.autograd.Variable(target)
 
@@ -192,13 +210,15 @@ class Approach(object):
                     ## smaple few examples from previous tasks
                     # memory_sampler = Tasks[pre_t]['memory_sampler']
                     # memory_sampler.set_epoch(epoch) # random or fix sample?
-                    memory_loader = Tasks[pre_t]['memory_loader']
+                    # memory_loader = Tasks[pre_t]['memory_loader']
+                    memory_cache = self.memory_caches[pre_t] # memory_cache is a list of loaded gpu tensor
                     ## compute gradient for few samples in previous tasks
                     if self.rank == 0:
                         print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=pre_t))
                     end_pre = time.time()
                     #
-                    pre_param = self.compute_pre_param(pre_t, memory_loader, epoch, Tasks)
+                    # pre_param = self.compute_pre_param(pre_t, memory_loader, epoch, Tasks)
+                    pre_param = self.compute_pre_param(pre_t, memory_cache, epoch, Tasks)
                     #
                     if self.rank == 0:
                         print("== END: compute grad for pre observed task: {task} | TIME: {time} ".\

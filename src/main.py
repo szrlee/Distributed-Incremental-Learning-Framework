@@ -88,7 +88,7 @@ def main():
     net = network.resnet50(pretrained=True).cuda()
     net = DistModule(net)
     # Approach
-    Appr = approach.Approach(net, args)
+    Appr = approach.Approach(net, args, Tasks)
 
     # Solve tasks incrementally
     for t in range(len(Tasks)):
