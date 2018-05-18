@@ -20,6 +20,7 @@ class Approach(object):
         self.model = model
         self.model_old = model
 
+        self.Tasks = Tasks
         cudnn.benchmark = True
         self.epochs = args.epochs
         self.lr = args.lr
@@ -36,8 +37,8 @@ class Approach(object):
 
         return
 
-    def solve(self, t, Tasks):
-        task = Tasks[t]
+    def solve(self, t):
+        task = self.Tasks[t]
         train_loader = task['train_loader']
         val_loader = task['test_loader']
         class_num = task['class_num']
@@ -59,9 +60,9 @@ class Approach(object):
             train_sampler.set_epoch(epoch)
             self.adjust_learning_rate(self.optimizer, epoch)
             # train for one epoch
-            self.train(t, train_loader, self.model, self.model_old, self.optimizer, epoch, Tasks)
+            self.train(t, train_loader, self.model, self.model_old, self.optimizer, epoch)
             # evaluate on validation set
-            accu = self.validate(t, self.model, epoch, Tasks)
+            accu = self.validate(t, self.model, epoch)
 
             # remember best prec@1 and save checkpoint
             if accu > best_accu:
@@ -78,7 +79,7 @@ class Approach(object):
         return best_accu
 
 
-    def train(self, t, train_loader, model, model_old, optimizer, epoch, Tasks):
+    def train(self, t, train_loader, model, model_old, optimizer, epoch):
         """Train for one epoch on the training set"""
         batch_time = AverageMeter()
         losses = AverageMeter()
@@ -103,10 +104,10 @@ class Approach(object):
             output_old = torch.nn.functional.sigmoid(output_old)
             output = torch.nn.functional.sigmoid(output)
 
-            loss = self.lwf_criterion(t, output, output_old, target_var, Tasks) / world_size
+            loss = self.lwf_criterion(t, output, output_old, target_var) / world_size
 
             # measure accuracy and record loss
-            (accu, accus) = self.cleba_accuracy(t, output.data, target, Tasks)
+            (accu, accus) = self.cleba_accuracy(t, output.data, target, 'train')
 
             reduced_loss = loss.data.clone()
             reduced_accu = accu.clone() / world_size
@@ -135,7 +136,7 @@ class Approach(object):
                           epoch, i, batch_cnt, batch_time=batch_time,
                           loss=losses, accuracy=accuracy))
 
-    def validate(self, t, model, epoch, Tasks):
+    def validate(self, t, model, epoch):
         """Perform validation on the validation set"""
         tol_accu = 0.0
         tol_loss = 0.0
@@ -146,16 +147,16 @@ class Approach(object):
         rank = dist.get_rank()
         world_size = dist.get_world_size()
 
-        tol_tasks = len(Tasks)
+        tol_tasks = len(self.Tasks)
         cur_class = 0
         for cur_t in range(tol_tasks):
             losses = AverageMeter()
             accuracy = AverageMeter()
-            class_num = Tasks[cur_t]['class_num']
+            class_num = self.Tasks[cur_t]['class_num']
             accuracys = []
             for cl in range(class_num):
                 accuracys.append(AverageMeter())
-            test_loader = Tasks[cur_t]['test_loader']
+            test_loader = self.Tasks[cur_t]['test_loader']
             for i, (input, target) in enumerate(test_loader):
                 target = target.cuda(async=True)
                 input = input.cuda()
@@ -165,10 +166,10 @@ class Approach(object):
                 # compute output
                 output = model(input_var)
                 output = torch.nn.functional.sigmoid(output)
-                loss = self.criterion(output[:,Tasks[cur_t]['subset']], target_var) / world_size
+                loss = self.criterion(output[:,self.Tasks[cur_t]['subset']], target_var) / world_size
 
                 # measure accuracy and record loss
-                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target, Tasks)
+                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
                 
                 reduced_loss = loss.data.clone()
                 reduced_accu = accu.clone() / world_size
@@ -205,13 +206,13 @@ class Approach(object):
             print(' * Total: Accuracy {:3f} Loss {:4f}'.format(tol_accu/tol_tasks, tol_loss/tol_tasks))
         return tol_accu / tol_tasks
 
-    def lwf_criterion(self, t, output, output_old, target_var, Tasks):
+    def lwf_criterion(self, t, output, output_old, target_var):
         # Knowledge distillation loss for all previous tasks
         loss_distill = 0
         for t_old in range(0, t):
-            loss_distill += self.criterion(output[:,Tasks[t_old]['subset']], output_old[:,Tasks[t_old]['subset']])
+            loss_distill += self.criterion(output[:,self.Tasks[t_old]['train_subset']], output_old[:,self.Tasks[t_old]['train_subset']])
         # Cross entropy loss
-        loss_new = self.criterion(output[:,Tasks[t]['subset']], target_var)
+        loss_new = self.criterion(output[:,self.Tasks[t]['train_subset']], target_var)
 
         return loss_new + self.balance * loss_distill
 
@@ -220,12 +221,14 @@ class Approach(object):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-
-    def cleba_accuracy(self, t, output, target, Tasks):
+    def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
         attr_num = target.size(1)
 
-        output = output.cpu().numpy()[:,Tasks[t]['subset']]
+        if stat == 'train':
+            output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
+        else:
+            output = output.cpu().numpy()[:,self.Tasks[t]['subset']]
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()

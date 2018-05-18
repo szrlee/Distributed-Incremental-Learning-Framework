@@ -19,6 +19,7 @@ class Approach(object):
     def __init__(self, model, args, Tasks):
         self.model = model
 
+        self.Tasks = Tasks
         cudnn.benchmark = True
         self.epochs = args.epochs
         self.lr = args.lr
@@ -32,8 +33,8 @@ class Approach(object):
 
         return
 
-    def solve(self, t, Tasks):
-        task = Tasks[t]
+    def solve(self, t):
+        task = self.Tasks[t]
         train_loader = task['train_loader']
         val_loader = task['test_loader']
         class_num = task['class_num']
@@ -54,9 +55,9 @@ class Approach(object):
             train_sampler.set_epoch(epoch)
             self.adjust_learning_rate(self.optimizer, epoch)
             # train for one epoch
-            self.train(t, train_loader, self.model, self.optimizer, epoch, Tasks)
+            self.train(t, train_loader, self.model, self.optimizer, epoch)
             # evaluate on validation set
-            accu = self.validate(t, self.model, epoch, Tasks)
+            accu = self.validate(t, self.model, epoch)
 
             # remember best prec@1 and save checkpoint
             if accu > best_accu:
@@ -68,7 +69,7 @@ class Approach(object):
         return best_accu
 
 
-    def train(self, t, train_loader, model, optimizer, epoch, Tasks):
+    def train(self, t, train_loader, model, optimizer, epoch):
         """Train for one epoch on the training set"""
         batch_time = AverageMeter()
         losses = AverageMeter()
@@ -91,10 +92,10 @@ class Approach(object):
             output = model(input_var)
             output = torch.nn.functional.sigmoid(output)
 
-            loss = self.criterion(output[:,Tasks[t]['train_subset']], target_var) / world_size
+            loss = self.criterion(output[:,self.Tasks[t]['train_subset']], target_var) / world_size
 
             # measure accuracy and record loss
-            (accu, accus) = self.cleba_accuracy(t, output.data, target, Tasks, 'train')
+            (accu, accus) = self.cleba_accuracy(t, output.data, target, 'train')
 
             reduced_loss = loss.data.clone()
             reduced_accu = accu.clone() / world_size
@@ -123,7 +124,7 @@ class Approach(object):
                           epoch, i, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy))
 
-    def validate(self, t, model, epoch, Tasks):
+    def validate(self, t, model, epoch):
         """Perform validation on the validation set"""
         tol_accu = 0.0
         tol_loss = 0.0
@@ -134,16 +135,16 @@ class Approach(object):
         rank = dist.get_rank()
         world_size = dist.get_world_size()
 
-        tol_tasks = len(Tasks)
+        tol_tasks = len(self.Tasks)
         cur_class = 0
         for cur_t in range(tol_tasks):
             losses = AverageMeter()
             accuracy = AverageMeter()
-            class_num = Tasks[cur_t]['class_num']
+            class_num = self.Tasks[cur_t]['class_num']
             accuracys = []
             for cl in range(class_num):
                 accuracys.append(AverageMeter())
-            test_loader = Tasks[cur_t]['test_loader']
+            test_loader = self.Tasks[cur_t]['test_loader']
             for i, (input, target) in enumerate(test_loader):
                 target = target.cuda(async=True)
                 input = input.cuda()
@@ -153,10 +154,10 @@ class Approach(object):
                 # compute output
                 output = model(input_var)
                 output = torch.nn.functional.sigmoid(output)
-                loss = self.criterion(output[:,Tasks[cur_t]['subset']], target_var) / world_size
+                loss = self.criterion(output[:,self.Tasks[cur_t]['subset']], target_var) / world_size
 
                 # measure accuracy and record loss
-                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target, Tasks)
+                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
                 
                 reduced_loss = loss.data.clone()
                 reduced_accu = accu.clone() / world_size
@@ -198,14 +199,14 @@ class Approach(object):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-    def cleba_accuracy(self, t, output, target, Tasks, stat='test'):
+    def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
         attr_num = target.size(1)
 
         if stat == 'train':
-            output = output.cpu().numpy()[:,Tasks[t]['train_subset']]
+            output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
         else:
-            output = output.cpu().numpy()[:,Tasks[t]['subset']]
+            output = output.cpu().numpy()[:,self.Tasks[t]['subset']]
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()

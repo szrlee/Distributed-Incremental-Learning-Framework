@@ -116,6 +116,7 @@ class Approach(object):
 
         # for prefetch memory for cache
         self.memory_caches = [None] * self.total_tasks
+        self.cur_t = -1
 
         return
 
@@ -132,6 +133,7 @@ class Approach(object):
         return memory_cache
 
     def solve(self, t, Tasks):
+        self.cur_t = t
         task = Tasks[t]
         best_accu = 0
         train_sampler = task['train_sampler']
@@ -144,9 +146,9 @@ class Approach(object):
             train_sampler.set_epoch(epoch)
             self.adjust_learning_rate(self.optimizer, epoch)
             # train for one epoch
-            self.train(t, train_loader, epoch, Tasks)
+            self.train(t, train_loader, epoch)
             # evaluate on validation set
-            accu = self.validate(t, epoch, Tasks)
+            accu = self.validate(t, epoch)
             # remember best prec@1 and save checkpoint
             if accu > best_accu:
                 best_accu = accu
@@ -162,24 +164,25 @@ class Approach(object):
         
         return best_accu
 
-    def compute_pre_param(self, t, memory_cache, epoch, Tasks):
+    def compute_pre_param(self, t, memory_cache, epoch):
         # if self.rank == 0:
         #     print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=t))
         # end = time.time()
         self.optimizer.zero_grad()
         mem_batch_cnt = int(len(memory_cache))
-        for input, target in memory_cache:
+        for input, mem_target in memory_cache:
             # target = target.cuda(async=True)
             # input = input.cuda(async=True)
             # input, target already loaded into GPU
             input_var = torch.autograd.Variable(input)
-            target_var = torch.autograd.Variable(target)
+            cur_t_train_subset = self.Tasks[self.cur_t]['train_subset']
+            target_var = torch.autograd.Variable(mem_target[:,cur_t_train_subset])
 
             # compute output
             output = self.model(input_var)
             output = torch.nn.functional.sigmoid(output)
             # compute loss divided by world_size and mem_batch_cnt
-            loss = self.criterion(output[:,Tasks[t]['subset']], target_var) / (self.world_size*mem_batch_cnt)
+            loss = self.criterion(output[:,cur_t_train_subset], target_var) / (self.world_size*mem_batch_cnt)
             # compute gradient for each batch of memory and accumulate
             loss.backward()
         
@@ -189,8 +192,9 @@ class Approach(object):
         #         format(task=t, time=(time.time()-end)) )
         return self.model.parameters
 
-    def train(self, t, train_loader, epoch, Tasks):
+    def train(self, t, train_loader, epoch):
         """Train for one epoch on the training set"""
+        assert(t==self.cur_t)
         batch_time = AverageMeter()
         losses = AverageMeter()
         accuracy = AverageMeter()
@@ -208,17 +212,19 @@ class Approach(object):
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## smaple few examples from previous tasks
-                    # memory_sampler = Tasks[pre_t]['memory_sampler']
+                    # memory_sampler = self.Tasks[pre_t]['memory_sampler']
                     # memory_sampler.set_epoch(epoch) # random or fix sample?
-                    # memory_loader = Tasks[pre_t]['memory_loader']
+                    # memory_loader = self.Tasks[pre_t]['memory_loader']
                     memory_cache = self.memory_caches[pre_t] # memory_cache is a list of loaded gpu tensor
                     ## compute gradient for few samples in previous tasks
                     if self.rank == 0:
                         print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=pre_t))
+                        print("--- Current Task is {cur_t} and current training subset is {train_subset}".\
+                            format(cur_t=self.cur_t, train_subset=self.Tasks[self.cur_t]['train_subset']))
                     end_pre = time.time()
                     #
-                    # pre_param = self.compute_pre_param(pre_t, memory_loader, epoch, Tasks)
-                    pre_param = self.compute_pre_param(pre_t, memory_cache, epoch, Tasks)
+                    # pre_param = self.compute_pre_param(pre_t, memory_loader, epoch)
+                    pre_param = self.compute_pre_param(pre_t, memory_cache, epoch)
                     #
                     if self.rank == 0:
                         print("== END: compute grad for pre observed task: {task} | TIME: {time} ".\
@@ -236,7 +242,7 @@ class Approach(object):
             output = self.model(input_var)
             output = torch.nn.functional.sigmoid(output)
 
-            loss = self.criterion(output[:,Tasks[t]['subset']], target_var) / self.world_size
+            loss = self.criterion(output[:,self.Tasks[t]['train_subset']], target_var) / self.world_size
 
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
@@ -276,7 +282,7 @@ class Approach(object):
             self.optimizer.step()
 
             # measure accuracy and record loss
-            accu, _ = self.cleba_accuracy(t, output.data, target, Tasks)
+            accu, _ = self.cleba_accuracy(t, output.data, target, 'train')
 
             reduced_loss = loss.data.clone()
             reduced_accu = accu.clone() / self.world_size
@@ -299,7 +305,7 @@ class Approach(object):
 
             end = time.time()
 
-    def validate(self, t, epoch, Tasks):
+    def validate(self, t, epoch):
         """Perform validation on the validation set"""
         tol_accu = 0.0
         tol_loss = 0.0
@@ -308,7 +314,7 @@ class Approach(object):
         self.model.eval()
         batch_time = AverageMeter()
 
-        tol_tasks = len(Tasks)
+        tol_tasks = len(self.Tasks)
         cur_class = 0
         
         # Begin
@@ -317,11 +323,11 @@ class Approach(object):
         for cur_t in range(tol_tasks):
             losses = AverageMeter()
             accuracy = AverageMeter()
-            class_num = Tasks[cur_t]['class_num']
+            class_num = self.Tasks[cur_t]['class_num']
             accuracys = []
             for cl in range(class_num):
                 accuracys.append(AverageMeter())
-            test_loader = Tasks[cur_t]['test_loader']
+            test_loader = self.Tasks[cur_t]['test_loader']
             for i, (input, target) in enumerate(test_loader):
                 target = target.cuda(async=True)
                 input = input.cuda()
@@ -331,10 +337,10 @@ class Approach(object):
                 # compute output
                 output = self.model(input_var)
                 output = torch.nn.functional.sigmoid(output)
-                loss = self.criterion(output[:,Tasks[cur_t]['subset']], target_var) / self.world_size
+                loss = self.criterion(output[:,self.Tasks[cur_t]['subset']], target_var) / self.world_size
 
                 # measure accuracy and record loss
-                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target, Tasks)
+                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
                 
                 reduced_loss = loss.data.clone()
                 reduced_accu = accu.clone() / self.world_size
@@ -382,11 +388,14 @@ class Approach(object):
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
-    def cleba_accuracy(self, t, output, target, Tasks):
+    def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
         attr_num = target.size(1)
 
-        output = output.cpu().numpy()[:,Tasks[t]['subset']]
+        if stat == 'train':
+            output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
+        else:
+            output = output.cpu().numpy()[:,self.Tasks[t]['subset']]
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()

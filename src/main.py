@@ -14,15 +14,15 @@ from distributed_utils import dist_init, average_gradients, DistModule
 
 # Arguments
 parser=argparse.ArgumentParser(description='Continual Learning Framework')
-parser.add_argument('--experiment', default='', type=str, required=True, choices=['CelebA'], help='(default=%(default)s)')
+parser.add_argument('--experiment', default='', type=str, required=True, choices=['CelebA', 'Photo'], help='(default=%(default)s)')
 parser.add_argument('--approach', default='', type=str, required=True, \
     choices=['lwf', 'joint_train', 'fine_tuning', 'gem', 'ewc', 'gmas'], help='(default=%(default)s)')
 parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
-parser.add_argument('--lr', default=0.01, type=float, required=False, help='(default=%(default)f)')
-parser.add_argument('--epochs', default=1, type=int, required=False, help='(default=%(default)d)')
-parser.add_argument('--batch_size', default=64, type=int, required=False, help='(default=%(default)d)')
+parser.add_argument('--lr', default=0.0001, type=float, required=False, help='(default=%(default)f)')
+parser.add_argument('--epochs', default=10, type=int, required=False, help='(default=%(default)d)')
+parser.add_argument('--batch_size', default=512, type=int, required=False, help='(default=%(default)d)')
 parser.add_argument('--momentum', default=0.9, type=float, required=False, help='(default=%(default)f)')
-parser.add_argument('--weight_decay', default=0.0005, type=float, required=False, help='(default=%(default)f)')
+parser.add_argument('--weight_decay', default=0.0001, type=float, required=False, help='(default=%(default)f)')
 parser.add_argument('--print_freq', default=50, type=int, required=False, help='(default=%(default)d)')
 
 parser.add_argument('--memory_size', default=None, type=int, required=False, help='(default=%(default)d)')
@@ -32,7 +32,8 @@ parser.add_argument('--margin', default=1.0, type=float, required=False, help='(
 ########################################################################################################################
 
 # Args -- Experiment
-from dataloaders import celeba as generator
+from dataloaders import celeba
+from dataloaders import photo
 
 # Args -- Approach
 from approaches import lwf
@@ -40,12 +41,19 @@ from approaches import joint_train
 from approaches import fine_tuning
 from approaches import gem
 # Args -- Network
-from networks import resnet as network
+from networks import mobilenet as network
 
 ########################################################################################################################
 def main():
     global args
     args = parser.parse_args()
+
+    if args.experiment == 'CelebA':
+        generator = celeba
+    elif args.experiment == 'Photo':
+        generator = photo
+    else:
+        generator = None
 
     # TODO model arguments module should be more easy to write and read
     if args.approach == 'lwf':
@@ -67,7 +75,7 @@ def main():
     else:
         approach = None
 
-    rank, world_size = dist_init('27777')
+    rank, world_size = dist_init('27771')
 
     if rank == 0:
         print('=' * 100)
@@ -85,7 +93,7 @@ def main():
     Tasks = generator.GetTasks(args.approach, args.batch_size, world_size, \
         memory_size=args.memory_size, memory_mini_batch_size=args.memory_mini_batch_size)
     # Network
-    net = network.resnet50(pretrained=True).cuda()
+    net = network.mobilenet(pretrained=True).cuda()
     net = DistModule(net)
     # Approach
     Appr = approach.Approach(net, args, Tasks)
@@ -101,7 +109,7 @@ def main():
             print()
             print('*'*100)
 
-        Appr.solve(t, Tasks)
+        Appr.solve(t)
 
         if rank == 0:
             print('*'*100)
