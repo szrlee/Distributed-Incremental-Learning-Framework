@@ -132,7 +132,7 @@ class Approach(object):
 
         return memory_cache
 
-    def solve(self, t, Tasks):
+    def solve(self, t):
         self.cur_t = t
         task = Tasks[t]
         best_accu = 0
