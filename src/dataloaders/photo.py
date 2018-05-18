@@ -147,7 +147,8 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
             # memory_subset = train_subsets[t+1]
             memory_subset = fullset
             memory_dataset = MultiLabelDataset(root='/mnt/lustre/share/sensephoto_data/',
-                                    label='/mnt/lustre17/tangchufeng/sensedata/photo/new/train.list', 
+                                    label='/mnt/lustre17/tangchufeng/sensedata/photo/new/train_pre.list' if t == 0 \
+                                        else train_new, 
                                     transform=transform_test,
                                     subset = memory_subset)
             memory_sampler = DistributedMemorySampler(memory_dataset, sample_size=memory_size)
