@@ -134,7 +134,7 @@ class Approach(object):
 
     def solve(self, t):
         self.cur_t = t
-        task = Tasks[t]
+        task = self.Tasks[t]
         best_accu = 0
         train_sampler = task['train_sampler']
         train_loader = task['train_loader']
