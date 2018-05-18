@@ -104,7 +104,7 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
     total_t = 2
     test_subsets = [pre_subset, new_subset]
     train_subsets = [pre_subset, fullset]
-    
+
     for t in range(total_t): # default order of tasks 0, 1, 2, 3, ...
         print('generating dataloader for task {t:2d} at rank:{rank:2d}'.format(t=t, rank=rank))
         test_subset = test_subsets[t]
@@ -114,7 +114,7 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
                 else '/mnt/lustre17/tangchufeng/sensedata/photo/new/train_new.list'
 
         train_dataset = MultiLabelDataset(root='/mnt/lustre/share/sensephoto_data/',
-                                    label='/mnt/lustre17/tangchufeng/sensedata/photo/new/train_new.list' if t == 0 \
+                                    label='/mnt/lustre17/tangchufeng/sensedata/photo/new/train_pre.list' if t == 0 \
                                         else train_new,
                                     transform=transform_train,
                                     subset = train_subset)
