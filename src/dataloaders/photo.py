@@ -102,8 +102,11 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
     print('Dataloader Process: BEGIN at rank:{rank}'.format(rank=rank))
 
     total_t = 2
+    # manualy set tasks specific number
     test_subsets = [pre_subset, new_subset]
     train_subsets = [pre_subset, fullset]
+
+    class_nums = [len(subset_i) for subset_i in test_subsets]
 
     for t in range(total_t): # default order of tasks 0, 1, 2, 3, ...
         print('generating dataloader for task {t:2d} at rank:{rank:2d}'.format(t=t, rank=rank))
@@ -139,7 +142,7 @@ def GetTasks(approach, batch_size, gpus, memory_size=None, memory_mini_batch_siz
         task['train_subset'] = train_subset
         task['subset'] = test_subset
         task['description'] = 'Photo Task #' + str(t)
-        task['class_num'] = (19 if t==1 else 1)
+        task['class_num'] = class_nums[t]
 
 
         # for those Approaches that need memory and except for the last one

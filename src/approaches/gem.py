@@ -87,6 +87,7 @@ class Approach(object):
 
     def __init__(self, model, args, Tasks):
         self.model = model
+
         self.Tasks = Tasks
         cudnn.benchmark = True
         self.epochs = args.epochs
