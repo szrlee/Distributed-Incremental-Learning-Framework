@@ -116,6 +116,7 @@ class Approach(object):
         self.rank = dist.get_rank()
 
         # for prefetch memory for cache
+        self.mem_strategy = args.gem_mem_strategy
         self.memory_caches = [None] * self.total_tasks
         self.cur_t = -1
 
@@ -161,20 +162,22 @@ class Approach(object):
         # then append it to solved_tasks
         if t not in self.solved_tasks:
             self.solved_tasks.append(t)
-            self.memory_caches[t] = self.prefetch_memory(t)
+            if self.mem_strategy == 'fixed_gpu_cache':
+                self.memory_caches[t] = self.prefetch_memory(t)
         
         return best_accu
 
-    def compute_pre_param(self, t, memory_cache, epoch):
+    def compute_pre_param(self, t, memory, epoch):
         # if self.rank == 0:
         #     print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=t))
         # end = time.time()
         self.optimizer.zero_grad()
-        mem_batch_cnt = int(len(memory_cache))
-        for input, mem_target in memory_cache:
-            # target = target.cuda(async=True)
-            # input = input.cuda(async=True)
-            # input, target already loaded into GPU
+        mem_batch_cnt = int(len(memory))
+        for input, mem_target in memory:
+            if self.mem_strategy == "direct_load":
+                mem_target = mem_target.cuda(async=True)
+                input = input.cuda(async=True)
+
             input_var = torch.autograd.Variable(input)
             cur_t_train_subset = self.Tasks[self.cur_t]['train_subset']
             target_var = torch.autograd.Variable(mem_target[:,cur_t_train_subset])
@@ -215,8 +218,12 @@ class Approach(object):
                     ## smaple few examples from previous tasks
                     # memory_sampler = self.Tasks[pre_t]['memory_sampler']
                     # memory_sampler.set_epoch(epoch) # random or fix sample?
-                    # memory_loader = self.Tasks[pre_t]['memory_loader']
-                    memory_cache = self.memory_caches[pre_t] # memory_cache is a list of loaded gpu tensor
+                    if self.mem_strategy == "direct_load":
+                        memory_loader = self.Tasks[pre_t]['memory_loader']
+                        memory = memory_loader
+                    elif self.mem_strategy == "fixed_gpu_cache":
+                        memory_cache = self.memory_caches[pre_t] # memory_cache is a list of loaded gpu tensor
+                        memory = memory_cache
                     ## compute gradient for few samples in previous tasks
                     if self.rank == 0:
                         print("== BEGIN: compute grad for pre observed tasks: {task}".format(task=pre_t))
@@ -225,7 +232,8 @@ class Approach(object):
                     end_pre = time.time()
                     #
                     # pre_param = self.compute_pre_param(pre_t, memory_loader, epoch)
-                    pre_param = self.compute_pre_param(pre_t, memory_cache, epoch)
+                    # pre_param = self.compute_pre_param(pre_t, memory_cache, epoch)
+                    pre_param = self.compute_pre_param(pre_t, memory, epoch)
                     #
                     if self.rank == 0:
                         print("== END: compute grad for pre observed task: {task} | TIME: {time} ".\
