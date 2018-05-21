@@ -19,7 +19,7 @@ parser.add_argument('--approach', default='', type=str, required=True, \
     choices=['lwf', 'joint_train', 'fine_tuning', 'gem', 'ewc', 'gmas'], help='(default=%(default)s)')
 parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
 parser.add_argument('--lr', default=0.0001, type=float, required=False, help='(default=%(default)f)')
-parser.add_argument('--epochs', default=10, type=int, required=False, help='(default=%(default)d)')
+parser.add_argument('--epochs', default=1, type=int, required=False, help='(default=%(default)d)')
 parser.add_argument('--batch_size', default=512, type=int, required=False, help='(default=%(default)d)')
 parser.add_argument('--momentum', default=0.9, type=float, required=False, help='(default=%(default)f)')
 parser.add_argument('--weight_decay', default=0.0001, type=float, required=False, help='(default=%(default)f)')
