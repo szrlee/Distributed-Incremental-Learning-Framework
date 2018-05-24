@@ -117,6 +117,7 @@ class Approach(object):
 
         # for prefetch memory for cache
         self.mem_strategy = args.gem_mem_strategy
+        print("Memory laoding strategy for previous tasks is: {strategy}".format(strategy=self.mem_strategy))
         self.memory_caches = [None] * self.total_tasks
         self.cur_t = -1
 
