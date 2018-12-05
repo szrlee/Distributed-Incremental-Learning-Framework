@@ -104,6 +104,7 @@ class Approach(object):
         """Perform validation on the validation set"""
         tol_accu = 0.0
         tol_loss = 0.0
+        tol_ap = 0.0
         tol_class = 0
         # switch to evaluate mode
         model.eval()
