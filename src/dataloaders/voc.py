@@ -33,7 +33,7 @@ class MultiLabelDataset(data.Dataset):
     def __getitem__(self, index):
 
         img_name, label = self.images[index]
-        img_name = os.path.join(self.root, img_name)
+        img_name = os.path.join(self.root, img_name + '.jpg')
 
         img = self.loader(img_name)
 
