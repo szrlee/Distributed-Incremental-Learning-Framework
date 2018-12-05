@@ -8,7 +8,7 @@ import utils
 from torch.utils.data import DataLoader
 
 class Approach(object):
-    """ Class implementing the Learning Without Forgetting approach described in https://arxiv.org/abs/1606.09282 """
+    """ Joint Training """
 
     def __init__(self, model, args, Tasks):
         self.model = model
