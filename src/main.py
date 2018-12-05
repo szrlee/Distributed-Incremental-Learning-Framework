@@ -11,6 +11,9 @@ parser.add_argument('--experiment', default='', type=str, required=True, choices
 parser.add_argument('--approach', default='', type=str, required=True, \
     choices=['lwf', 'joint_train', 'fine_tuning', 'gem'], help='(default=%(default)s)')
 parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
+
+parser.add_argument('--pretrain', default=True, type=bool, required=False, help='(default=%(default)f)')
+
 parser.add_argument('--lr', default=0.01, type=float, required=False, help='(default=%(default)f)')
 parser.add_argument('--epochs', default=5, type=int, required=False, help='(default=%(default)d)')
 parser.add_argument('--batch_size', default=512, type=int, required=False, help='(default=%(default)d)')
@@ -78,7 +81,7 @@ def main():
         memory_size=args.memory_size, memory_mini_batch_size=args.memory_mini_batch_size)
     # Network
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = network.mobilenet(pretrained=True).to(device)
+    net = network.mobilenet(pretrained=args.pretrain).to(device)
     net = torch.nn.DataParallel(net)    
     # Approach
     Appr = approach.Approach(net, args, Tasks)
