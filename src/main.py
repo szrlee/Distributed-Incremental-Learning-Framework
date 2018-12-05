@@ -36,7 +36,8 @@ from approaches import joint_train
 from approaches import fine_tuning
 
 # Args -- Network
-from networks import mobilenet as network
+from networks import mobilenet
+from networks import resnet
 
 ########################################################################################################################
 def main():
@@ -81,7 +82,9 @@ def main():
         memory_size=args.memory_size, memory_mini_batch_size=args.memory_mini_batch_size)
     # Network
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    net = network.mobilenet(pretrained=args.pretrain).to(device)
+    # net = mobilenet.mobilenet(pretrained=args.pretrain).to(device)
+    net = resnet.resnet18(pretrained=args.pretrain).to(device)
+
     net = torch.nn.DataParallel(net)    
     # Approach
     Appr = approach.Approach(net, args, Tasks)
