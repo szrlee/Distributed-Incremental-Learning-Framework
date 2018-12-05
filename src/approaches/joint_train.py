@@ -127,8 +127,8 @@ class Approach(object):
                 accuracys.append(AverageMeter())
             test_loader = self.Tasks[cur_t]['test_loader']
             for i, (input, target) in enumerate(test_loader):
-                target = target.cuda(async=True)
-                input = input.cuda()
+                target = target.to(self.device)
+                input = input.to(self.device)
                 input_var = torch.autograd.Variable(input, volatile=True)
                 target_var = torch.autograd.Variable(target, volatile=True)
 
