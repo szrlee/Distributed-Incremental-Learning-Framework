@@ -4,6 +4,7 @@ import torch
 from copy import deepcopy
 import torch.backends.cudnn as cudnn
 import utils
+from meter.apmeter import APMeter
 
 from torch.utils.data import DataLoader
 
@@ -112,6 +113,7 @@ class Approach(object):
         for cur_t in range(tol_tasks):
             losses = AverageMeter()
             accuracy = AverageMeter()
+            APs = APMeter()
             class_num = self.Tasks[cur_t]['class_num']
             accuracys = []
             for cl in range(class_num):
@@ -129,7 +131,8 @@ class Approach(object):
 
                     # measure accuracy and record loss
                     (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
-                    
+                    APs.add(output[:,self.Tasks[cur_t]['test_subset']], target)
+
                     reduced_loss = loss.data.clone()
                     reduced_accu = accu.clone()
 
@@ -148,14 +151,19 @@ class Approach(object):
                     #           epoch, i, len(test_loader), batch_time=batch_time,
                     #           loss=losses, accuracy=accuracy))
 
+            ap = APs.value()
             for cl in range(class_num):
-                print('Accu @ Class{:2d} = {:.3f}'.format(cur_class, accuracys[cl].avg))
+                print(f'* AP * & Accu @ Class{cur_class:2d} = * {ap[cl]:.3f} * & {accuracys[cl].avg:.3f} ')
                 cur_class = cur_class + 1
             print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
+            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=ap.mean().item()))
+
             tol_accu = tol_accu + accuracy.avg
             tol_loss = tol_loss + losses.avg
+            tol_ap = tol_ap + ap.sum().item()
 
-        print(' * Total: Accuracy {:3f} Loss {:4f}'.format(tol_accu/tol_tasks, tol_loss/tol_tasks))
+        # TODO: wrong average
+        print(' * Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
         return tol_accu / tol_tasks
 
     def adjust_learning_rate(self, optimizer, epoch):
