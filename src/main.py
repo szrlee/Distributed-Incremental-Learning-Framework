@@ -30,6 +30,8 @@ from dataloaders import voc
 
 # Args -- Approach
 from approaches import joint_train
+from approaches import fine_tuning
+
 # Args -- Network
 from networks import mobilenet as network
 
