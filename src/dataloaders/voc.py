@@ -73,17 +73,21 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
     # Construct dataloader for every task
     Tasks = []
     fullset = np.arange(20)
-    # pre_subset = np.delete(fullset, 1)
-    # new_subset = np.array([1])
+    task1_set = np.arange(7)
+    task2_set = np.arange(7,14)
+    task3_set = np.arange(14,20)
 
     print('Dataloader Process: BEGIN')
 
     # manualy set tasks specific number
-    total_t = 1
-    # test_subsets = [pre_subset, new_subset]
-    # train_subsets = [pre_subset, fullset]
-    test_subsets = [fullset]
-    train_subsets = [fullset]
+    if approach == 'joint_train':
+        total_t = 1
+        test_subsets = [fullset]
+        train_subsets = [fullset]
+    else:
+        total_t = 3
+        test_subsets = [task1_set, task2_set, task3_set]
+        train_subsets = [fullset, fullset, fullset]
 
 
     class_nums = [len(subset_i) for subset_i in test_subsets]
