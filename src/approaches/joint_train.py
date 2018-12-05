@@ -74,7 +74,7 @@ class Approach(object):
 
             # compute output
             output = model(input_var)
-            output = torch.nn.functional.sigmoid(output)
+            output = torch.sigmoid(output)
 
             loss = self.criterion(output[:,self.Tasks[t]['train_subset']], target_var)
 
@@ -130,7 +130,7 @@ class Approach(object):
 
                     # compute output
                     output = model(input_var)
-                    output = torch.nn.functional.sigmoid(output)
+                    output = torch.sigmoid(output)
                     loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target_var)
 
                     # measure accuracy and record loss
@@ -176,7 +176,7 @@ class Approach(object):
         if stat == 'train':
             output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
         else:
-            output = output.cpu().numpy()[:,self.Tasks[t]['subset']]
+            output = output.cpu().numpy()[:,self.Tasks[t]['test_subset']]
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()
