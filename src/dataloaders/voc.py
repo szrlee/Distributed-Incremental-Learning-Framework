@@ -97,10 +97,14 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
         test_subset = test_subsets[t]
         train_subset = train_subsets[t]
 
+        if approach == 'joint_train':
+            train_file='/home/ubuntu/ml-voc/ImageSets/train_all.txt'
+        else:
+            train_file='/home/ubuntu/ml-voc/ImageSets/task'+str(t)+'_train.txt'
+
+        print(f"filename of training data in Task {t}: {train_file}")
         train_dataset = MultiLabelDataset(root='/home/ubuntu/ml-voc/JPEGImages/',
-                                    label='/home/ubuntu/ml-voc/ImageSets/train_all.txt',
-                                    # label='/mnt/lustre17/tangchufeng/sensedata/photo/new/train_pre.list' if t == 0 \
-                                    #     else train_new,
+                                    label=train_file,
                                     transform=transform_train,
                                     subset = train_subset)
         test_dataset = MultiLabelDataset(root='/home/ubuntu/ml-voc/JPEGImages/',
