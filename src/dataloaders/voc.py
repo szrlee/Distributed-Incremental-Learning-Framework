@@ -86,8 +86,8 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
         train_subsets = [fullset]
     else:
         total_t = 3
+        train_subsets = [task1_set, task2_set, task3_set]
         test_subsets = [task1_set, task2_set, task3_set]
-        train_subsets = [fullset, fullset, fullset]
 
 
     class_nums = [len(subset_i) for subset_i in test_subsets]
