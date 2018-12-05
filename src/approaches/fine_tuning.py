@@ -152,7 +152,7 @@ class Approach(object):
                     #           epoch, i, len(test_loader), batch_time=batch_time,
                     #           loss=losses, accuracy=accuracy))
 
-            ap = APs.value()
+            ap = APs.value() * 100.0
             for cl in range(class_num):
                 print(f'* AP * & Accu @ Class{cur_class:2d} = * {ap[cl]:.3f} * & {accuracys[cl].avg:.3f} ')
                 cur_class = cur_class + 1
