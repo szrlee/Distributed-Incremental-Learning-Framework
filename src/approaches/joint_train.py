@@ -83,8 +83,8 @@ class Approach(object):
 
             reduced_loss = loss.data.clone()
             reduced_accu = accu.clone()
-            losses.update(reduced_loss[0], input.size(0))
-            accuracy.update(reduced_accu[0], input.size(0))
+            losses.update(reduced_loss.item(), input.size(0))
+            accuracy.update(reduced_accu.item(), input.size(0))
 
             # compute gradient and do SGD step
             optimizer.zero_grad()
@@ -124,34 +124,35 @@ class Approach(object):
             for i, (input, target) in enumerate(test_loader):
                 target = target.to(self.device)
                 input = input.to(self.device)
-                input_var = torch.autograd.Variable(input, volatile=True)
-                target_var = torch.autograd.Variable(target, volatile=True)
+                with torch.no_grad():
+                    input_var = torch.autograd.Variable(input)
+                    target_var = torch.autograd.Variable(target)
 
-                # compute output
-                output = model(input_var)
-                output = torch.nn.functional.sigmoid(output)
-                loss = self.criterion(output[:,self.Tasks[cur_t]['subset']], target_var)
+                    # compute output
+                    output = model(input_var)
+                    output = torch.nn.functional.sigmoid(output)
+                    loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target_var)
 
-                # measure accuracy and record loss
-                (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
-                
-                reduced_loss = loss.data.clone()
-                reduced_accu = accu.clone()
+                    # measure accuracy and record loss
+                    (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
+                    
+                    reduced_loss = loss.data.clone()
+                    reduced_accu = accu.clone()
 
-                reduced_accus = accus.clone()
+                    reduced_accus = accus.clone()
 
-                losses.update(reduced_loss[0], input.size(0))
-                accuracy.update(reduced_accu[0], input.size(0))
-                for cl in range(class_num):
-                    accuracys[cl].update(reduced_accus[cl], input.size(0))
+                    losses.update(reduced_loss.item(), input.size(0))
+                    accuracy.update(reduced_accu.item(), input.size(0))
+                    for cl in range(class_num):
+                        accuracys[cl].update(reduced_accus[cl], input.size(0))
 
-                # if i % self.print_freq == 0 and rank == 0: 
-                # print('Epoch: [{0}][{1}/{2}]\t'
-                #       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                #       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                #       'Accu {accuracy.val:.3f} ({accuracy.avg:.3f})'.format(
-                #           epoch, i, len(test_loader), batch_time=batch_time,
-                #           loss=losses, accuracy=accuracy))
+                    # if i % self.print_freq == 0 and rank == 0: 
+                    # print('Epoch: [{0}][{1}/{2}]\t'
+                    #       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
+                    #       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
+                    #       'Accu {accuracy.val:.3f} ({accuracy.avg:.3f})'.format(
+                    #           epoch, i, len(test_loader), batch_time=batch_time,
+                    #           loss=losses, accuracy=accuracy))
 
             for cl in range(class_num):
                 print('Accu @ Class{:2d} = {:.3f}'.format(cur_class, accuracys[cl].avg))
