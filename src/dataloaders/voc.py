@@ -115,6 +115,8 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
         task['test_loader'] = test_loader
         task['description'] = 'VOC Task #' + str(t)
         task['class_num'] = class_nums[t]
+        task['train_subset'] = train_subset
+        task['test_subset'] = test_subset
 
         Tasks.append(task)
 
