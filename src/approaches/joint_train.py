@@ -40,11 +40,7 @@ class Approach(object):
 
         best_accu = 0
 
-        train_sampler = task['train_sampler']
-        testsampler = task['test_sampler']
-
         for epoch in range(self.epochs):
-            train_sampler.set_epoch(epoch)
             self.adjust_learning_rate(self.optimizer, epoch)
             # train for one epoch
             self.train(t, train_loader, self.model, self.optimizer, epoch)
@@ -55,8 +51,7 @@ class Approach(object):
             if accu > best_accu:
                 best_accu = accu
 
-        # if rank == 0:
-        #     print('Best accuracy: ', best_accu)
+        print('Best accuracy: ', best_accu)
 
         return best_accu
 
