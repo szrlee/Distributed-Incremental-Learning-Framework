@@ -69,14 +69,12 @@ class Approach(object):
         for i, (input, target) in enumerate(train_loader):
             target = target.to(self.device)
             input = input.to(self.device)
-            input_var = torch.autograd.Variable(input)
-            target_var = torch.autograd.Variable(target)
 
             # compute output
-            output = model(input_var)
+            output = model(input)
             output = torch.sigmoid(output)
 
-            loss = self.criterion(output[:,self.Tasks[t]['train_subset']], target_var)
+            loss = self.criterion(output[:,self.Tasks[t]['train_subset']], target)
 
             # measure accuracy and record loss
             (accu, accus) = self.cleba_accuracy(t, output.data, target, 'train')
@@ -125,13 +123,11 @@ class Approach(object):
                 target = target.to(self.device)
                 input = input.to(self.device)
                 with torch.no_grad():
-                    input_var = torch.autograd.Variable(input)
-                    target_var = torch.autograd.Variable(target)
 
                     # compute output
-                    output = model(input_var)
+                    output = model(input)
                     output = torch.sigmoid(output)
-                    loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target_var)
+                    loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target)
 
                     # measure accuracy and record loss
                     (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
