@@ -31,7 +31,7 @@ class MultiLabelDataset(data.Dataset):
         self.initialized = False
 
     def __getitem__(self, index):
-        self._init_memcached()
+
         img_name, label = self.images[index]
         img_name = os.path.join(self.root, img_name)
 
