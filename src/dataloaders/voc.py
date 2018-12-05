@@ -100,7 +100,7 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
                                     transform=transform_train,
                                     subset = train_subset)
         test_dataset = MultiLabelDataset(root='/home/ubuntu/ml-voc/JPEGImages/',
-                                    label='/home/ubuntu/ml-voc/ImageSets/train_all.txt', 
+                                    label='/home/ubuntu/ml-voc/ImageSets/test_all.txt', 
                                     transform=transform_test,
                                     subset = test_subset)
 
