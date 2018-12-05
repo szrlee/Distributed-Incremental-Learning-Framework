@@ -29,10 +29,7 @@ parser.add_argument('--gem_mem_strategy', default=None, type=str, required=False
 from dataloaders import voc
 
 # Args -- Approach
-from approaches import lwf
 from approaches import joint_train
-from approaches import fine_tuning
-from approaches import gem
 # Args -- Network
 from networks import mobilenet as network
 

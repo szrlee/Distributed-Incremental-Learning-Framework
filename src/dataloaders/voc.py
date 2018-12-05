@@ -15,7 +15,7 @@ def default_loader(path):
     return Image.open(path).convert('RGB')
 
 class MultiLabelDataset(data.Dataset):
-    def __init__(self, root, label, transform = None, subset = [], loader = pil_loader):
+    def __init__(self, root, label, transform = None, subset = [], loader = default_loader):
         images = [] 
         labels = open(label).readlines()
         for line in labels:
@@ -35,7 +35,7 @@ class MultiLabelDataset(data.Dataset):
         img_name, label = self.images[index]
         img_name = os.path.join(self.root, img_name)
 
-        img = default_loader(img_name)
+        img = self.loader(img_name)
 
         if self.transform is not None:
             img = self.transform(img)
