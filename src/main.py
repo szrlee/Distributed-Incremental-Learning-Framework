@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 parser=argparse.ArgumentParser(description='Continual Learning Framework')
 parser.add_argument('--experiment', default='', type=str, required=True, choices=['voc'], help='(default=%(default)s)')
 parser.add_argument('--approach', default='', type=str, required=True, \
-    choices=['lwf', 'joint_train', 'fine_tuning', 'gem'], help='(default=%(default)s)')
+    choices=['joint_train', 'fine_tuning', 'fine_tune_aug_label'], help='(default=%(default)s)')
 parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
 
 # Network
