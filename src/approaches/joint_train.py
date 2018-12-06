@@ -24,8 +24,8 @@ class Approach(object):
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
 
-        self.save_acc = args.save_dir+'/model/'+args.network+'_'+args.approach+'_bestacc_'+args.time
-        self.save_mAP = args.save_dir+'/model/'+args.network+'_'+args.approach+'_mAP_'+args.time
+        self.save_acc = args.save_dir+'/'+args.network+'_'+args.approach+'_bestAcc_'+args.time
+        self.save_mAP = args.save_dir+'/'+args.network+'_'+args.approach+'_bestmAP_'+args.time
 
 
     def solve(self, t):

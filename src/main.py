@@ -10,7 +10,7 @@ parser=argparse.ArgumentParser(description='Continual Learning Framework')
 parser.add_argument('--experiment', default='', type=str, required=True, choices=['voc'], help='(default=%(default)s)')
 parser.add_argument('--approach', default='', type=str, required=True, \
     choices=['joint_train', 'fine_tuning', 'fine_tune_aug_label'], help='(default=%(default)s)')
-parser.add_argument('--save_dir', default='res/', type=str, required=False, help='(default=%(default)s)')
+parser.add_argument('--save_dir', default='res/model/', type=str, required=False, help='(default=%(default)s)')
 parser.add_argument('--time', default='now', type=str, required=True, help='(default=%(default)s)')
 
 parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
