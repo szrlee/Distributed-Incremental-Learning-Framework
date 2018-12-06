@@ -50,10 +50,10 @@ class Approach(object):
             self.scheduler.step()
 
             # train for one epoch
-            print("===\tStart Training\t===")
+            print("===Start Training")
             self.train(t, train_loader, self.model, self.optimizer, epoch)
             # evaluate on validation set
-            print("===\tStart Evaluating\t===")
+            print("===Start Evaluating")
             accu, mAP = self.validate(t, self.model, epoch)
 
             # remember best acc and save checkpoint
@@ -62,17 +62,16 @@ class Approach(object):
                 # save best
                 torch.save({
                 'epoch': epoch,
-                'model_state_dict': self.model.module.state_dict(),
-                'optimizer_state_dict': self.optimizer.state_dict()
+                'model_state_dict': self.model.module.state_dict()
                 }, self.save_acc)
+                # 'optimizer_state_dict': self.optimizer.state_dict()
             # remember best mAP and save checkpoint
             if mAP > best_mAP:
                 best_mAP = mAP
                 # save best
                 torch.save({
                 'epoch': epoch,
-                'model_state_dict': self.model.module.state_dict(),
-                'optimizer_state_dict': self.optimizer.state_dict()
+                'model_state_dict': self.model.module.state_dict()
                 }, self.save_mAP)
 
         print('Best accuracy: ', best_accu)
