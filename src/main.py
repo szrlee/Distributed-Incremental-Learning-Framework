@@ -38,7 +38,6 @@ from approaches import joint_train
 from approaches import fine_tuning
 
 # Args -- Network
-from networks import mobilenet
 from networks import resnet
 
 ########################################################################################################################
