@@ -50,10 +50,10 @@ class Approach(object):
             self.scheduler.step()
 
             # train for one epoch
-            print("***Start Training***")
+            print("===\tStart Training\t===")
             self.train(t, train_loader, self.model, self.optimizer, epoch)
             # evaluate on validation set
-            print("***Start Evaluating***")
+            print("===\tStart Evaluating\t===")
             accu, mAP = self.validate(t, self.model, epoch)
 
             # remember best acc and save checkpoint
@@ -180,8 +180,9 @@ class Approach(object):
                     #           loss=losses, accuracy=accuracy))
 
             ap = APs.value() * 100.0
+            print(' '*10+'|   AP   |  Accu  |')
             for cl in range(class_num):
-                print(f'| AP | Accu | @ Class{cur_class:2d} = | {ap[cl]:.3f} | {accuracys[cl].avg:.3f} |')
+                print(f'Class{cur_class:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
                 cur_class = cur_class + 1
             print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
             print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=ap.mean().item()))
@@ -192,6 +193,7 @@ class Approach(object):
 
         # TODO: wrong average
         print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
+        print()
         return (tol_accu / tol_tasks), (tol_ap/20)
 
     def cleba_accuracy(self, t, output, target, stat='test'):
