@@ -12,6 +12,8 @@ parser.add_argument('--approach', default='', type=str, required=True, \
     choices=['lwf', 'joint_train', 'fine_tuning', 'gem'], help='(default=%(default)s)')
 parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
 
+# Network
+parser.add_argument('--network', default='res18', type=str, required=False, choices=['res18', 'res34', 'res50', 'res101'], help='(default=%(default)s)')
 parser.add_argument('--pretrain', required=False, action='store_true', help='(default=%(default)f)')
 
 parser.add_argument('--lr', default=0.0001, type=float, required=False, help='(default=%(default)f)')
@@ -81,9 +83,13 @@ def main():
     Tasks = generator.GetTasks(args.approach, args.batch_size, \
         memory_size=args.memory_size, memory_mini_batch_size=args.memory_mini_batch_size)
     # Network
+    net = {'res18': resnet.resnet18,
+        'res34': resnet.resnet34,
+        'res50': resnet.resnet50,
+        'res101': resnet.resnet101}
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    # net = mobilenet.mobilenet(pretrained=args.pretrain).to(device)
-    net = resnet.resnet18(pretrained=args.pretrain).to(device)
+    # net = resnet.resnet18(pretrained=args.pretrain).to(device)
+    net = net[args.network](pretrained=args.pretrain).to(device)
 
     net = torch.nn.DataParallel(net)    
     # Approach
