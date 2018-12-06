@@ -23,37 +23,59 @@ class Approach(object):
         self.weight_decay = args.weight_decay
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
-        self.optimizer = torch.optim.SGD(model.parameters(), self.lr,
-                                momentum=self.momentum,
-                                weight_decay=self.weight_decay)
+
+        self.save_acc = args.save_dir+'/model/'+args.network+'_'+args.approach+'_bestacc_'+args.time
+        self.save_mAP = args.save_dir+'/model/'+args.network+'_'+args.approach+'_mAP_'+args.time
+
 
     def solve(self, t):
         task = self.Tasks[t]
         train_loader = task['train_loader']
-        val_loader = task['test_loader']
-        class_num = task['class_num']
+        # val_loader = task['test_loader']
+        # class_num = task['class_num']
         self.optimizer = torch.optim.SGD(self.model.parameters(), self.lr,
                                 momentum=self.momentum,
                                 weight_decay=self.weight_decay)
-        criterion = self.criterion
+        self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[8], gamma=0.1)
+        # criterion = self.criterion
 
         best_accu = 0
+        best_mAP = 0
+
         print("evaluate the initialization model")
         accu = self.validate(-1, self.model, -1)
         print('=' * 100)
 
         for epoch in range(self.epochs):
-            self.adjust_learning_rate(self.optimizer, epoch)
+            self.scheduler.step()
+
             # train for one epoch
             self.train(t, train_loader, self.model, self.optimizer, epoch)
             # evaluate on validation set
-            accu = self.validate(t, self.model, epoch)
+            accu, mAP = self.validate(t, self.model, epoch)
 
-            # remember best prec@1 and save checkpoint
+            # remember best acc and save checkpoint
             if accu > best_accu:
                 best_accu = accu
+                # save best
+                torch.save({
+                'epoch': epoch,
+                'model_state_dict': self.model.module.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict()
+                }, self.save_acc)
+            # remember best mAP and save checkpoint
+            if mAP > best_mAP:
+                best_mAP = mAP
+                # save best
+                torch.save({
+                'epoch': epoch,
+                'model_state_dict': self.model.module.state_dict(),
+                'optimizer_state_dict': self.optimizer.state_dict()
+                }, self.save_mAP)
 
         print('Best accuracy: ', best_accu)
+        print('Best mean AP: ', best_mAP)
+
 
         return best_accu
 
@@ -168,12 +190,7 @@ class Approach(object):
 
         # TODO: wrong average
         print(' * Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
-        return tol_accu / tol_tasks
-
-    def adjust_learning_rate(self, optimizer, epoch):
-        lr = self.lr * (0.1 ** (epoch // 10)) * (0.1 ** (epoch // 15))
-        for param_group in optimizer.param_groups:
-            param_group['lr'] = lr
+        return (tol_accu / tol_tasks), (tol_ap/20)
 
     def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
