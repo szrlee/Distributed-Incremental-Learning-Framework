@@ -24,8 +24,8 @@ class Approach(object):
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
 
-        self.save_acc = args.save_dir+'/'+args.network+'_'+args.approach+'_bestAcc_'+args.time
-        self.save_mAP = args.save_dir+'/'+args.network+'_'+args.approach+'_bestmAP_'+args.time
+        self.save_acc = args.save_dir+'/'+args.network+'_'+args.approach+'_bestAcc_'+args.time+'.pt'
+        self.save_mAP = args.save_dir+'/'+args.network+'_'+args.approach+'_bestmAP_'+args.time+'.pt'
 
 
     def solve(self, t):
@@ -42,7 +42,7 @@ class Approach(object):
         best_accu = 0
         best_mAP = 0
 
-        print("evaluate the initialization model")
+        print("Evaluate the Initialization model")
         accu = self.validate(-1, self.model, -1)
         print('=' * 100)
 
@@ -50,8 +50,10 @@ class Approach(object):
             self.scheduler.step()
 
             # train for one epoch
+            print("***Start Training***")
             self.train(t, train_loader, self.model, self.optimizer, epoch)
             # evaluate on validation set
+            print("***Start Evaluating***")
             accu, mAP = self.validate(t, self.model, epoch)
 
             # remember best acc and save checkpoint
@@ -179,7 +181,7 @@ class Approach(object):
 
             ap = APs.value() * 100.0
             for cl in range(class_num):
-                print(f'* AP * & Accu @ Class{cur_class:2d} = * {ap[cl]:.3f} * & {accuracys[cl].avg:.3f} ')
+                print(f'| AP | Accu | @ Class{cur_class:2d} = | {ap[cl]:.3f} | {accuracys[cl].avg:.3f} |')
                 cur_class = cur_class + 1
             print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
             print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=ap.mean().item()))
@@ -189,7 +191,7 @@ class Approach(object):
             tol_ap = tol_ap + ap.sum().item()
 
         # TODO: wrong average
-        print(' * Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
+        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
         return (tol_accu / tol_tasks), (tol_ap/20)
 
     def cleba_accuracy(self, t, output, target, stat='test'):
