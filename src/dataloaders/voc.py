@@ -120,9 +120,9 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
                                     subset = test_subset)
 
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, 
-                                                num_workers=2, pin_memory=True)
+                                                num_workers=2, pin_memory=False)
         test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
-                                                num_workers=2, pin_memory=True)
+                                                num_workers=2, pin_memory=False)
         task = {}
         task['train_dataset'] = train_dataset
         task['test_dataset'] = test_dataset
