@@ -171,7 +171,7 @@ class Approach(object):
         return tol_accu / tol_tasks
 
     def adjust_learning_rate(self, optimizer, epoch):
-        lr = self.lr * (0.1 ** (epoch // 5)) * (0.1 ** (epoch // 7))
+        lr = self.lr * (0.1 ** (epoch // 10)) * (0.1 ** (epoch // 15))
         for param_group in optimizer.param_groups:
             param_group['lr'] = lr
 
