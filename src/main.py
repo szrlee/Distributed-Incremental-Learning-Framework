@@ -39,6 +39,8 @@ from dataloaders import voc
 # Args -- Approach
 from approaches import joint_train
 from approaches import fine_tuning
+from approaches import fine_tune_aug_label
+
 
 # Args -- Network
 from networks import resnet
@@ -48,14 +50,11 @@ def main():
     global args
     args = parser.parse_args()
 
+    # Dataset
     generator = voc
 
     # TODO model arguments module should be more easy to write and read
-    if args.approach == 'lwf':
-        approach = lwf
-        assert(args.memory_size is None)
-        assert(args.memory_mini_batch_size is None)
-    elif args.approach == 'joint_train':
+    if args.approach == 'joint_train':
         approach = joint_train
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
@@ -63,24 +62,35 @@ def main():
         approach = fine_tuning
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
-    elif args.approach == 'gem':
-        approach = gem
-        assert(args.memory_size is not None)
+    elif args.approach == 'fine_tune_aug_label':
+        approach = fine_tune_aug_label
+        assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
+    # elif args.approach == 'gem':
+    #     approach = gem
+    #     assert(args.memory_size is not None)
+    #     assert(args.memory_mini_batch_size is None)
+    # elif args.approach == 'lwf':
+    #     approach = lwf
+    #     assert(args.memory_size is None)
+    #     assert(args.memory_mini_batch_size is None)
     else:
         approach = None
 
+    # print all arguments
     print('=' * 100)
     print('Arguments = ')
     for arg in vars(args):
         print('\t' + arg + ':', getattr(args, arg))
     print('=' * 100)
 
+    # manually set random seed
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     if torch.cuda.is_available(): torch.cuda.manual_seed(args.seed)
     else: print('[CUDA unavailable]'); sys.exit()
 
+    ### generate dataloader and network
     # Generate Tasks
     Tasks = generator.GetTasks(args.approach, args.batch_size, \
         memory_size=args.memory_size, memory_mini_batch_size=args.memory_mini_batch_size)
@@ -92,13 +102,14 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # net = resnet.resnet18(pretrained=args.pretrain).to(device)
     net = net[args.network](pretrained=args.pretrain).to(device)
+    net = torch.nn.DataParallel(net)
 
-    net = torch.nn.DataParallel(net)    
     # Approach
     Appr = approach.Approach(net, args, Tasks)
 
     # Solve tasks incrementally
     for t in range(len(Tasks)):
+        # get dict for one single task
         task = Tasks[t]
 
         print('*'*100)
@@ -106,7 +117,7 @@ def main():
         print('Task {:d}: {:d} classes ({:s})'.format(t, task['class_num'], task['description']))
         print()
         print('*'*100)
-
+        # solve current task t
         Appr.solve(t)
 
         print('*'*100)
