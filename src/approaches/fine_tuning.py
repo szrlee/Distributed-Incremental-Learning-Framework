@@ -38,6 +38,9 @@ class Approach(object):
         criterion = self.criterion
 
         best_accu = 0
+        print("evaluate the initialization model")
+        accu = self.validate(-1, self.model, -1)
+        print('=' * 100)
 
         for epoch in range(self.epochs):
             self.adjust_learning_rate(self.optimizer, epoch)
