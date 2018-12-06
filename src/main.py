@@ -16,7 +16,7 @@ parser.add_argument('--seed', type=int, default=0, help='(default=%(default)d)')
 parser.add_argument('--network', default='res18', type=str, required=False, choices=['res18', 'res34', 'res50', 'res101'], help='(default=%(default)s)')
 parser.add_argument('--pretrain', required=False, action='store_true', help='(default=%(default)f)')
 
-parser.add_argument('--lr', default=0.0001, type=float, required=False, help='(default=%(default)f)')
+parser.add_argument('--lr', default=0.1, type=float, required=False, help='(default=%(default)f)')
 parser.add_argument('--epochs', default=5, type=int, required=False, help='(default=%(default)d)')
 parser.add_argument('--batch_size', default=512, type=int, required=False, help='(default=%(default)d)')
 parser.add_argument('--momentum', default=0.9, type=float, required=False, help='(default=%(default)f)')
