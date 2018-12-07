@@ -32,7 +32,7 @@ class Approach(object):
         # load best model in previous task (Start from the second task)
         if t>0:
             print(f"loading best model in previous task {t-1}")
-            checkpoint = torch.load(self.save_acc[t-1])
+            checkpoint = torch.load(self.save_mAP[t-1])
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
             print(f"loading completed!")
 
