@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 parser=argparse.ArgumentParser(description='Continual Learning Framework')
 parser.add_argument('--experiment', default='', type=str, required=True, choices=['voc'], help='(default=%(default)s)')
 parser.add_argument('--approach', default='', type=str, required=True, \
-    choices=['joint_train', 'fine_tuning', 'fine_tune_aug_label'], help='(default=%(default)s)')
+    choices=['joint_train', 'fine_tuning', 'fine_tune_aug_label', 'ml_lwf', 'gpm', 'ml_lwf_gpm'], help='(default=%(default)s)')
 parser.add_argument('--save_dir', default='../res/model/', type=str, required=False, help='(default=%(default)s)')
 parser.add_argument('--time', default='now', type=str, required=True, help='(default=%(default)s)')
 
@@ -40,7 +40,7 @@ from dataloaders import voc
 from approaches import joint_train
 from approaches import fine_tuning
 from approaches import fine_tune_aug_label
-
+from approaches import ml_lwf
 
 # Args -- Network
 from networks import resnet

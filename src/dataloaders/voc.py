@@ -84,14 +84,14 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
         total_t = 1
         test_subsets = [fullset]
         train_subsets = [fullset]
-    elif approach == 'fine_tune_aug_label':
+    elif approach == 'fine_tune_aug_label' or 'gpm':
         total_t = 3
         test_subsets = [task1_set, task2_set, task3_set]
         # for training: union current subset with all previous
         task2_set = np.unique(np.concatenate((task1_set, task2_set)))
         task3_set = np.unique(np.concatenate((task2_set, task3_set)))
         train_subsets = [task1_set, task2_set, task3_set]
-    else:
+    elif (approach == 'fine_tune') or (approach == 'ml_lwf') or (approach == 'ml_lwf_gem'):
         total_t = 3
         train_subsets = [task1_set, task2_set, task3_set]
         test_subsets = [task1_set, task2_set, task3_set]

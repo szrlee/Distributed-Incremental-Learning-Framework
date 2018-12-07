@@ -6,7 +6,6 @@ import torch.backends.cudnn as cudnn
 import utils
 from meter.apmeter import APMeter
 
-
 from torch.utils.data import DataLoader
 
 class Approach(object):
