@@ -30,7 +30,7 @@ class Approach(object):
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
         # distilation related parameters
         self.model_old = None
-        self.balance = [1/2, 3/2]          # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
+        self.balance = [3/2, 1/2]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
         self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
 
     def solve(self, t):
