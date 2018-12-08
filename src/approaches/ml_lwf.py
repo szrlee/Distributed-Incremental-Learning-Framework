@@ -9,7 +9,9 @@ from meter.apmeter import APMeter
 from torch.utils.data import DataLoader
 
 class Approach(object):
-    """ Class implementing the Learning Without Forgetting approach described in https://arxiv.org/abs/1606.09282 """
+    """ Extending Learning Without Forgetting approach described in https://arxiv.org/abs/1606.09282
+        to multi label case
+    """
 
     def __init__(self, model, args, Tasks):
         self.model = model
@@ -28,7 +30,7 @@ class Approach(object):
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
         # distilation related parameters
         self.model_old = None
-        self.balance = 1          # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
+        self.balance = [1/2, 3/2]          # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
         self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
 
     def solve(self, t):
@@ -221,8 +223,9 @@ class Approach(object):
         # Knowledge distillation loss for all previous tasks
         loss_distill = torch.tensor(0.0).cuda()
         for t_old in range(0, t): # no distill loss if t = 0
-            loss_distill += self.criterion(output[:,self.Tasks[t_old]['train_subset']], output_old[:,self.Tasks[t_old]['train_subset']])
-        loss_distill = self.balance * loss_distill
+            loss_distill += self.balance[t_old] * self.criterion(
+                                        output[:,self.Tasks[t_old]['test_subset']],
+                                        output_old[:,self.Tasks[t_old]['test_subset']])
 
         # Cross entropy loss
         loss_new = self.criterion(output[:,self.Tasks[t]['train_subset']], target)

@@ -80,11 +80,14 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
     print('Dataloader Process: BEGIN')
 
     # manualy set tasks specific number
+    access_prev_label =  ['fine_tune_aug_label', 'gpm', \
+                               'ml_lwf_aug_label', 'ml_lwf_aug_label_gpm']
+    no_access_prev_label = ['fine_tuning', 'ml_lwf', 'ml_lwf_gem']
     if approach == 'joint_train':
         total_t = 1
         test_subsets = [fullset]
         train_subsets = [fullset]
-    elif (approach == 'fine_tune_aug_label') or (approach == 'gpm'):
+    elif approach in access_prev_label:
         ## access to label in previous tasks
         total_t = 3
         test_subsets = [task1_set, task2_set, task3_set]
@@ -92,7 +95,7 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
         task2_set = np.unique(np.concatenate((task1_set, task2_set)))
         task3_set = np.unique(np.concatenate((task2_set, task3_set)))
         train_subsets = [task1_set, task2_set, task3_set]
-    elif (approach == 'fine_tuning') or (approach == 'ml_lwf') or (approach == 'ml_lwf_gem'):
+    elif approach in no_access_prev_label:
         ## no access to label in previous tasks
         total_t = 3
         train_subsets = [task1_set, task2_set, task3_set]
