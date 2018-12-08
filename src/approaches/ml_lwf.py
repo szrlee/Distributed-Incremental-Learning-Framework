@@ -118,7 +118,8 @@ class Approach(object):
             output_old = model_old(input)
             output_old = torch.sigmoid(output_old)
 
-            loss = self.lwf_criterion(t, output, output_old, target)
+            loss_dict = self.lwf_criterion(t, output, output_old, target)
+            loss = loss_dict['total']
 
             # measure accuracy and record loss
             (accu, accus) = self.cleba_accuracy(t, output.data, target, 'train')
@@ -141,9 +142,11 @@ class Approach(object):
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})'.format(
+                      'Acc {accuracy.val:.3f} ({accuracy.avg:.3f}\t)'
+                      'distill {loss_distill:.4f}'.format(
                           epoch, i, len(train_loader), batch_time=batch_time,
-                          loss=losses, accuracy=accuracy))
+                          loss=losses, accuracy=accuracy, 
+                          loss_distill=loss_dict['distill'].data.item()))
 
     def validate(self, t, model, epoch):
         """Perform validation on the validation set"""
@@ -216,14 +219,19 @@ class Approach(object):
 
     def lwf_criterion(self, t, output, output_old, target):
         # Knowledge distillation loss for all previous tasks
-        loss_distill = 0
+        loss_distill = torch.tensor(0.0).cuda()
         for t_old in range(0, t):
             loss_distill += self.criterion(output[:,self.Tasks[t_old]['train_subset']], output_old[:,self.Tasks[t_old]['train_subset']])
-        
+        loss_distill = self.balance * loss_distill
+
         # Cross entropy loss
         loss_new = self.criterion(output[:,self.Tasks[t]['train_subset']], target)
 
-        return loss_new + self.balance * loss_distill
+        losses = {  'distill': loss_distill,
+                    'new': loss_new,
+                    'total': loss_new + loss_distill}
+        
+        return losses
 
     def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
