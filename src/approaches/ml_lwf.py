@@ -28,10 +28,13 @@ class Approach(object):
 
         self.save_acc = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestAcc_'+args.time+'.pt' for t in range(len(Tasks))]
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
-        # distilation related parameters
+        # distillation related parameters
         self.model_old = None
-        self.balance = [3/2, 1/2]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
+        self.balance = [1, 1]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
         self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
+        print(f'distillation related parameters:\t'
+                f'balance lambdas = {self.balance}\t'
+                f'annelating factor T = {self.T}')
 
     def solve(self, t):
         # load best model in previous task (Start from the second task)
