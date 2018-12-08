@@ -66,14 +66,18 @@ def main():
         approach = fine_tune_aug_label
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
-    # elif args.approach == 'gem':
-    #     approach = gem
-    #     assert(args.memory_size is not None)
-    #     assert(args.memory_mini_batch_size is None)
-    # elif args.approach == 'lwf':
-    #     approach = lwf
-    #     assert(args.memory_size is None)
-    #     assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'ml_lwf':
+        approach = ml_lwf
+        assert(args.memory_size is None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'gpm':
+        approach = gpm
+        assert(args.memory_size is not None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'ml_lwf_gpm':
+        approach = ml_lwf_gem
+        assert(args.memory_size is not None)
+        assert(args.memory_mini_batch_size is None)
     else:
         approach = None
 
