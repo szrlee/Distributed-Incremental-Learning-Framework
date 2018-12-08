@@ -114,9 +114,9 @@ class Approach(object):
             # compute output
             output = model(input)
             output = torch.sigmoid(output)
-            # compute output from freezed old model
-            output_old = model_old(input)
-            output_old = torch.sigmoid(output_old)
+            # compute output from freezed old model START the second task (t>0)
+            output_old = model_old(input) if t>0 else None
+            output_old = torch.sigmoid(output_old) if t>0 else None
 
             loss_dict = self.lwf_criterion(t, output, output_old, target)
             loss = loss_dict['total']
@@ -220,7 +220,7 @@ class Approach(object):
     def lwf_criterion(self, t, output, output_old, target):
         # Knowledge distillation loss for all previous tasks
         loss_distill = torch.tensor(0.0).cuda()
-        for t_old in range(0, t):
+        for t_old in range(0, t): # no distill loss if t = 0
             loss_distill += self.criterion(output[:,self.Tasks[t_old]['train_subset']], output_old[:,self.Tasks[t_old]['train_subset']])
         loss_distill = self.balance * loss_distill
 
