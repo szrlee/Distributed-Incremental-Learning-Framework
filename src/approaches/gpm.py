@@ -1,22 +1,16 @@
-import multiprocessing as mp
-if mp.get_start_method(allow_none=True) != 'spawn':
-    mp.set_start_method('spawn', force=True)
 import sys,time
 import numpy as np
 import torch
 from copy import deepcopy
 import torch.backends.cudnn as cudnn
 import utils
+from meter.apmeter import APMeter
 
-import torch.distributed as dist
 from torch.utils.data import DataLoader
-from torch.utils.data.distributed import DistributedSampler
-from distributed_utils import dist_init, average_gradients, DistModule
-
-import quadprog
 
 ######################################################################
 # Auxiliary functions useful for GEM's inner optimization.
+import quadprog
 
 def store_grad(pp, grads, grad_dims, tid):
     """
@@ -56,12 +50,11 @@ def overwrite_grad(pp, newgrad, grad_dims):
         cnt += 1
 
 
-def project2cone2(gradient, memories, margin=0.5):
+def project2cone2(gradient, memories, margin=0.5, eps=1e-3):
     """
         Solves the GEM dual QP described in the paper given a proposed
         gradient "gradient", and a memory of task gradients "memories".
         Overwrites "gradient" with the final projected update.
-
         input:  gradient, p-vector
         input:  memories, (t * p)-vector
         output: x, p-vector
@@ -70,7 +63,7 @@ def project2cone2(gradient, memories, margin=0.5):
     gradient_np = gradient.cpu().contiguous().view(-1).double().numpy()
     t = memories_np.shape[0]
     P = np.dot(memories_np, memories_np.transpose())
-    P = 0.5 * (P + P.transpose())
+    P = 0.5 * (P + P.transpose()) + np.eye(t) * eps
     q = np.dot(memories_np, gradient_np) * -1
     G = np.eye(t)
     h = np.zeros(t) + margin
@@ -87,6 +80,7 @@ class Approach(object):
 
     def __init__(self, model, args, Tasks):
         self.model = model
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.Tasks = Tasks
         cudnn.benchmark = True
@@ -96,9 +90,10 @@ class Approach(object):
         self.weight_decay = args.weight_decay
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
-        self.optimizer = torch.optim.SGD(self.model.parameters(), self.lr,
-                                momentum=self.momentum,
-                                weight_decay=self.weight_decay)
+
+        self.save_acc = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestAcc'+args.time+'.pt' for t in range(len(Tasks))]
+        self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP'+args.time+'.pt' for t in range(len(Tasks))]
+
         
         # allocate temporary synaptic memory
         self.grad_dims = []
@@ -110,10 +105,6 @@ class Approach(object):
         self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
         self.margin = args.margin # regularization parameter
         self.solved_tasks = []
-
-        # process
-        self.world_size = dist.get_world_size()
-        self.rank = dist.get_rank()
 
         # for prefetch memory for cache
         self.mem_strategy = args.gem_mem_strategy
