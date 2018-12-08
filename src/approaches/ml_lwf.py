@@ -142,7 +142,7 @@ class Approach(object):
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Acc {accuracy.val:.3f} ({accuracy.avg:.3f}\t)'
+                      'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
                       'distill {loss_distill:.4f}'.format(
                           epoch, i, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy, 
