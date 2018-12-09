@@ -40,7 +40,7 @@ from dataloaders import voc
 from approaches import joint_train
 from approaches import fine_tune
 from approaches import ml_lwf
-# from approaches import gpm
+from approaches import gpm
 # from approaches import ml_lwf_gpm
 
 # Args -- Network
