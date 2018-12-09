@@ -80,7 +80,7 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
     print('Dataloader Process: BEGIN')
 
     # manualy set tasks specific number
-    access_prev_label =  ['fine_tune_aug_label', 'gpm', \
+    access_prev_label =  ['fine_tune_aug_label', 'gpm', 'ppi', \
                                'ml_lwf_aug_label', 'ml_lwf_aug_label_gpm']
     no_access_prev_label = ['fine_tuning', 'ml_lwf', 'ml_lwf_gpm']
     if approach == 'joint_train':

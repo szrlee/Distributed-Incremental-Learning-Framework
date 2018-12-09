@@ -91,14 +91,11 @@ class Approach(object):
 
         self.save_acc = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestAcc_'+args.time+'.pt' for t in range(len(Tasks))]
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
-        # distillation related parameters
-        self.model_old = None
-        self.balance = [1, 1]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
-        self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
-        print(f'distillation related parameters:\t'
-                f'balance lambdas = {self.balance}\t'
-                f'annelating factor T = {self.T}')
+
         # allocate temporary synaptic memory
+        print(self.model.new_fc.parameters())
+        print(self.model.hidden.parameters())
+        input()
         self.grad_dims = []
         for param in self.model.parameters():
             self.grad_dims.append(param.data.numel())
@@ -118,9 +115,6 @@ class Approach(object):
             checkpoint = torch.load(self.save_mAP[t-1])
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
             print(f"loading completed!")
-            # deep copy best prev_task model and freeze it
-            self.model_old = deepcopy(self.model)
-            utils.freeze_model(self.model_old)
 
         # prepare task specific object
         task = self.Tasks[t]
@@ -184,6 +178,7 @@ class Approach(object):
     def compute_pre_param(self, t, output, target, epoch):
         self.optimizer.zero_grad()
         subset = self.Tasks[t]['test_subset']
+
         # compute loss
         loss = self.criterion(output[:,subset], target[:,subset])
         # compute gradient for each batch of memory and accumulate
@@ -212,16 +207,13 @@ class Approach(object):
             # ================================================================= #
             # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
-                # compute output from freezed old model START the second task (t>0)
-                output_old = self.model_old(input)
-                output_old = torch.sigmoid(output_old)
                 # print(f"====== compute grad for pre observed tasks: {self.solved_tasks}")
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
                     # print(f"== BEGIN: compute grad for pre observed tasks: {pre_t}")
                     end_pre = time.time()
-                    pre_param = self.compute_pre_param(pre_t, output, output_old, epoch)
+                    pre_param = self.compute_pre_param(pre_t, output, target, epoch)
                     # print(f"== END: compute grad for pre observed task: {pre_t} | TIME: {(time.time()-end_pre)} ")
                     ## store prev grad to tensor
                     store_grad(pre_param, self.grads, self.grad_dims, pre_t)
@@ -230,7 +222,7 @@ class Approach(object):
             # ================================================================= #
             # compute grad for current task
             subset = self.Tasks[t]['train_subset']
-            loss = self.criterion(output[:,subset], target)
+            loss = self.criterion(output[:,subset], target[:,subset])
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
             loss.backward()

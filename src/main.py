@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 parser=argparse.ArgumentParser(description='Continual Learning Framework')
 parser.add_argument('--experiment', default='', type=str, required=True, choices=['voc'], help='(default=%(default)s)')
 parser.add_argument('--approach', default='', type=str, required=True, \
-    choices=['joint_train', 'fine_tune', 'ml_lwf', 'gpm', 'ml_lwf_gpm'], help='(default=%(default)s)')
+    choices=['joint_train', 'fine_tune', 'ml_lwf', 'gpm', 'ml_lwf_gpm', 'ppi'], help='(default=%(default)s)')
 parser.add_argument('--save_dir', default='../res/model/', type=str, required=False, help='(default=%(default)s)')
 parser.add_argument('--time', default='now', type=str, required=True, help='(default=%(default)s)')
 
@@ -43,6 +43,9 @@ from approaches import ml_lwf
 from approaches import gpm
 from approaches import ml_lwf_gpm
 
+from approaches import ppi
+
+
 # Args -- Network
 from networks import resnet
 
@@ -72,6 +75,10 @@ def main():
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'ml_lwf_gpm':
+        approach = ml_lwf_gpm
+        assert(args.memory_size is None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'ppi':
         approach = ml_lwf_gpm
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)

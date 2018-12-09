@@ -204,7 +204,7 @@ class Approach(object):
             # ================================================================= #
             # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
-                print(f"====== compute grad for pre observed tasks: {self.solved_tasks}")
+                # print(f"====== compute grad for pre observed tasks: {self.solved_tasks}")
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
