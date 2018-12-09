@@ -82,7 +82,7 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
     # manualy set tasks specific number
     access_prev_label =  ['fine_tune_aug_label', 'gpm', \
                                'ml_lwf_aug_label', 'ml_lwf_aug_label_gpm']
-    no_access_prev_label = ['fine_tuning', 'ml_lwf', 'ml_lwf_gem']
+    no_access_prev_label = ['fine_tuning', 'ml_lwf', 'ml_lwf_gpm']
     if approach == 'joint_train':
         total_t = 1
         test_subsets = [fullset]
@@ -100,7 +100,8 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
         total_t = 3
         train_subsets = [task1_set, task2_set, task3_set]
         test_subsets = [task1_set, task2_set, task3_set]
-
+    else:
+        raise NotImplementedError
 
     class_nums = [len(subset_i) for subset_i in test_subsets]
 
