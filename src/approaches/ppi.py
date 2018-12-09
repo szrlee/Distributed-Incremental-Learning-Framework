@@ -95,7 +95,7 @@ class Approach(object):
         # allocate temporary synaptic memory
         ignored_params_id_list = list(map(id, self.model.module.newfc.parameters()))
         # self.base_params = filter(lambda p: 'newfc' not in p[0], self.model.named_parameters())
-        self.base_params = [p for p in self.model.module.parameters() if tid(p) not in ignored_params_id_list]
+        self.base_params = [p for p in self.model.module.parameters() if id(p) not in ignored_params_id_list]
 
         self.grad_dims = []
         for param in self.base_params:
