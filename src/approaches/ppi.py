@@ -101,11 +101,9 @@ class Approach(object):
         for param in self.base_params:
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
-                print(param.data.numel())
 
-        for param in self.base_params:
-            if param.requires_grad:
-                print(param.data.numel())
+        for param in self.model.module.newfc.parameters():
+            print(param.data.numel())
 
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
@@ -133,7 +131,7 @@ class Approach(object):
                                 weight_decay=self.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[8], gamma=0.1)
         
-        self.optim_fc = torch.optim.SGD(self.model.newfc.parameters(), self.lr,
+        self.optim_fc = torch.optim.SGD(self.model.module.newfc.parameters(), self.lr,
                                 momentum=self.momentum,
                                 weight_decay=self.weight_decay)
         self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
