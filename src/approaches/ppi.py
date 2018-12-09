@@ -278,7 +278,7 @@ class Approach(object):
                     project2cone2(self.grads[:, t].unsqueeze(1),
                               self.grads.index_select(1, indx), self.margin)
                     ## copy surrogate grad back to model gradient parameters
-                    overwrite_grad(self.model.parameters(), self.grads[:, t],
+                    overwrite_grad(self.base_params, self.grads[:, t],
                                self.grad_dims)
                 # print(f"== END: violate constraints? : {violate_constr} | TIME: {time.time()-end_opt}")
             # ================================================================= #
