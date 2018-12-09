@@ -93,8 +93,9 @@ class Approach(object):
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
 
         # allocate temporary synaptic memory
-        print(self.model.new_fc.parameters())
-        print(self.model.hidden.parameters())
+        print(self.model.module.state_dict())
+        print(self.model.module.new_fc.parameters())
+        print(self.model.module.hidden.parameters())
         input()
         self.grad_dims = []
         for param in self.model.parameters():
