@@ -79,7 +79,7 @@ def main():
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'ppi':
-        approach = ml_lwf_gpm
+        approach = ppi
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     else:
