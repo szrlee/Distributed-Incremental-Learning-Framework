@@ -101,6 +101,9 @@ class Approach(object):
         for param in self.base_params:
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
+        for param in self.base_params:
+            if param.requires_grad:
+                print(param.data.numel())
 
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
