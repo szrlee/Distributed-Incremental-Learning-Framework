@@ -230,7 +230,7 @@ class Approach(object):
             # ================================================================= #
             # compute grad for current task
             subset = self.Tasks[t]['train_subset']
-            loss = self.criterion(output[:,subset], target[:,subset])
+            loss = self.criterion(output[:,subset], target)
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
             loss.backward()
