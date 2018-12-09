@@ -97,14 +97,14 @@ class Approach(object):
         utils.freeze_model(self.model.module.newfc)
 
         self.grad_dims = []
-        for name, param in self.model.name_parameters():
+        for name, param in self.model.named_parameters():
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
             else:
                 print(name)
         
         utils.unfreeze_model(self.model.module.newfc)
-        for name, param in self.model.name_parameters():
+        for name, param in self.model.named_parameters():
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
             else:
