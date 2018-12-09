@@ -102,9 +102,6 @@ class Approach(object):
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
 
-        for param in self.model.module.newfc.parameters():
-            print(param.data.numel())
-
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
         self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
