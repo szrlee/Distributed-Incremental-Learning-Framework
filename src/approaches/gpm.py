@@ -176,7 +176,7 @@ class Approach(object):
         self.optimizer.zero_grad()
         subset = self.Tasks[t]['test_subset']
 
-        # compute loss divided by world_size and mem_batch_cnt
+        # compute loss
         loss = self.criterion(output[:,subset], target[:,subset])
         # compute gradient for each batch of memory and accumulate
         loss.backward(retain_graph=True)
@@ -202,15 +202,13 @@ class Approach(object):
             output = torch.sigmoid(output)
 
             # ================================================================= #
-            # compute grad for data at previous tasks
+            # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
                 print(f"====== compute grad for pre observed tasks: {self.solved_tasks}")
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
                     print(f"== BEGIN: compute grad for pre observed tasks: {pre_t}")
-                    # print(f"--- Current Task is {self.cur_t}")
-                    # print(f"--- Current label subset is {self.Tasks[self.cur_t]['test_subset']}")
                     end_pre = time.time()
                     pre_param = self.compute_pre_param(pre_t, output, target, epoch)
                     print(f"== END: compute grad for pre observed task: {pre_t} | TIME: {(time.time()-end_pre)} ")
@@ -219,8 +217,8 @@ class Approach(object):
 
 
             # ================================================================= #
-            # compute grad for data at current task
-            subset = self.Tasks[t]['test_subset']
+            # compute grad for current task
+            subset = self.Tasks[t]['train_subset']
             loss = self.criterion(output[:,subset], target[:,subset])
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
@@ -271,10 +269,11 @@ class Approach(object):
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                      'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})'
-                      '#Surrogate {count_vio:3d}'.format(
+                      'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
+                      '#Surr [{count_vio}/{batch_cnt}]'.format(
                           epoch, i, len(train_loader), batch_time=batch_time,
-                          loss=losses, accuracy=accuracy, count_vio=count_vio))
+                          loss=losses, accuracy=accuracy,
+                          count_vio=count_vio, batch_cnt=len(train_loader)))
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
