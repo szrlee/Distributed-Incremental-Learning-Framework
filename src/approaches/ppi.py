@@ -94,12 +94,23 @@ class Approach(object):
 
         # allocate temporary synaptic memory
         print(self.model.module.state_dict().keys())
-        print(self.model.module.newfc.parameters())
-        print(self.model.module.hidden.parameters())
-        input()
+        utils.freeze_model(self.model.module.newfc)
+
         self.grad_dims = []
-        for param in self.model.parameters():
-            self.grad_dims.append(param.data.numel())
+        for name, param in self.model.name_parameters():
+            if param.requires_grad:
+                self.grad_dims.append(param.data.numel())
+            else:
+                print(name)
+        
+        utils.unfreeze_model(self.model.module.newfc)
+        for name, param in self.model.name_parameters():
+            if param.requires_grad:
+                self.grad_dims.append(param.data.numel())
+            else:
+                print(name)
+
+        input()
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
         self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
