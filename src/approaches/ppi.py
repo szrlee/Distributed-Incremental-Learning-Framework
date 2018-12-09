@@ -208,7 +208,7 @@ class Approach(object):
             param.requires_grad = False
         loss = self.criterion(output[:,subset], target[:,subset])
         # compute gradient for each batch of memory and accumulate
-        loss.backward()
+        loss.backward(retain_graph=True)
         # fc layer update
         self.optim_fc.step()
         for param in self.base_params:
