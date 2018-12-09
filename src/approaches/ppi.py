@@ -15,7 +15,7 @@ import quadprog
 def store_grad(pp, grads, grad_dims, tid):
     """
         This stores parameter gradients of past tasks.
-        pp: parameters
+        pp: parameters iterator
         grads: gradients
         grad_dims: list with number of parameters per layers
         tid: task id
@@ -35,7 +35,7 @@ def overwrite_grad(pp, newgrad, grad_dims):
     """
         This is used to overwrite the gradients with a new gradient
         vector, whenever violations occur.
-        pp: parameters
+        pp: parameters iterator
         newgrad: corrected gradient
         grad_dims: list storing number of parameters at each layer
     """
@@ -278,7 +278,7 @@ class Approach(object):
                     project2cone2(self.grads[:, t].unsqueeze(1),
                               self.grads.index_select(1, indx), self.margin)
                     ## copy surrogate grad back to model gradient parameters
-                    overwrite_grad(self.model.parameters, self.grads[:, t],
+                    overwrite_grad(self.model.parameters(), self.grads[:, t],
                                self.grad_dims)
                 # print(f"== END: violate constraints? : {violate_constr} | TIME: {time.time()-end_opt}")
             # ================================================================= #
