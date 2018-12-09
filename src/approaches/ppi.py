@@ -99,6 +99,13 @@ class Approach(object):
         self.base_params = filter(lambda p: id(p) not in ignored_params_id_list, self.model.module.parameters())
 
         self.grad_dims = []
+        for param in self.model.module.parameters():
+            if param.requires_grad:
+                pass
+            else:
+                print('newfc')
+                print(param)
+                
         for param in self.base_params:
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
