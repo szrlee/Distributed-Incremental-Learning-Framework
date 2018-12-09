@@ -23,7 +23,7 @@ def store_grad(pp, grads, grad_dims, tid):
     # store the gradients
     grads[:, tid].fill_(0.0)
     cnt = 0
-    for param in pp():
+    for param in pp:
         if param.grad is not None:
             beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
             en = sum(grad_dims[:cnt + 1])
@@ -40,7 +40,7 @@ def overwrite_grad(pp, newgrad, grad_dims):
         grad_dims: list storing number of parameters at each layer
     """
     cnt = 0
-    for param in pp():
+    for param in pp:
         if param.grad is not None:
             beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
             en = sum(grad_dims[:cnt + 1])
@@ -93,26 +93,15 @@ class Approach(object):
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
 
         # allocate temporary synaptic memory
-        utils.freeze_model(self.model.module.newfc)
         ignored_params_id_list = list(map(id, self.model.module.newfc.parameters()))
         # self.base_params = filter(lambda p: 'newfc' not in p[0], self.model.named_parameters())
         self.base_params = filter(lambda p: id(p) not in ignored_params_id_list, self.model.module.parameters())
 
         self.grad_dims = []
-        for param in self.model.module.parameters():
-            if param.requires_grad:
-                pass
-            else:
-                print('newfc')
-                print(param)
-                
         for param in self.base_params:
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
-                print(param)
-            else:
-                print('newfc')
-                print(param)
+
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
         self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
@@ -134,10 +123,15 @@ class Approach(object):
         task = self.Tasks[t]
         train_loader = task['train_loader']
 
-        self.optimizer = torch.optim.SGD(self.model.parameters(), self.lr,
+        self.optimizer = torch.optim.SGD(self.base_params, self.lr,
                                 momentum=self.momentum,
                                 weight_decay=self.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[8], gamma=0.1)
+        
+        self.optim_fc = torch.optim.SGD(self.model.newfc.parameters(), self.lr,
+                                momentum=self.momentum,
+                                weight_decay=self.weight_decay)
+        self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
 
         best_accu = 0
         best_mAP = 0
@@ -151,6 +145,7 @@ class Approach(object):
         # cycle epoch training
         for epoch in range(self.epochs):
             self.scheduler.step()
+            self.sche_fc.step()
 
             # train for one epoch
             print("===Start Training")
@@ -191,13 +186,34 @@ class Approach(object):
 
     def compute_pre_param(self, t, output, target, epoch):
         self.optimizer.zero_grad()
+        self.optim_fc.zero_grad()
         subset = self.Tasks[t]['test_subset']
 
         # compute loss
         loss = self.criterion(output[:,subset], target[:,subset])
-        # compute gradient for each batch of memory and accumulate
+        # compute gradient
         loss.backward(retain_graph=True)
-        return self.model.parameters
+        return self.base_params
+
+    def update_task_param(self, output, target, epoch):
+        self.optimizer.zero_grad()
+        self.optim_fc.zero_grad()
+        subset = np.empty(0, dtype=int)
+        for pre_t in self.solved_tasks:
+            subset = np.unique(np.concatenate((self.Tasks[pre_t]['test_subset'], subset)))
+
+        # compute loss
+        print(subset)
+        for param in self.base_params:
+            param.requires_grad = False
+        loss = self.criterion(output[:,subset], target[:,subset])
+        # compute gradient for each batch of memory and accumulate
+        loss.backward()
+        # fc layer update
+        self.optim_fc.step()
+        for param in self.base_params:
+            param.requires_grad = True
+        return self.base_params
 
     def train(self, t, train_loader, epoch):
         """Train for one epoch on the training set"""
@@ -221,24 +237,22 @@ class Approach(object):
             # ================================================================= #
             # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
-                # print(f"====== compute grad for pre observed tasks: {self.solved_tasks}")
+                self.update_task_param(output, target, epoch)
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
-                    # print(f"== BEGIN: compute grad for pre observed tasks: {pre_t}")
-                    end_pre = time.time()
                     pre_param = self.compute_pre_param(pre_t, output, target, epoch)
-                    # print(f"== END: compute grad for pre observed task: {pre_t} | TIME: {(time.time()-end_pre)} ")
                     ## store prev grad to tensor
                     store_grad(pre_param, self.grads, self.grad_dims, pre_t)
 
 
             # ================================================================= #
             # compute grad for current task
-            subset = self.Tasks[t]['train_subset']
+            subset = self.Tasks[t]['test_subset']
             loss = self.criterion(output[:,subset], target[:,subset])
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
+            self.optim_fc.zero_grad()
             loss.backward()
 
             # ================================================================== #
@@ -247,7 +261,7 @@ class Approach(object):
                 # print("== BEGIN: check constraints; if violate, get surrogate grad.")
                 end_opt = time.time()
                 ## copy gradient for data at current task to a tensor and clear grad
-                store_grad(self.model.parameters, self.grads, self.grad_dims, t)
+                store_grad(self.base_params, self.grads, self.grad_dims, t)
                 ## check if current step gradient violate constraints
                 indx = torch.cuda.LongTensor(self.solved_tasks)
                 dotp = torch.mm(self.grads[:, t].unsqueeze(0),
@@ -260,6 +274,7 @@ class Approach(object):
                     count_vio += 1
                     # if violate, use quadprog to get new grad
                     self.optimizer.zero_grad()
+                    self.optim_fc.zero_grad()
                     project2cone2(self.grads[:, t].unsqueeze(1),
                               self.grads.index_select(1, indx), self.margin)
                     ## copy surrogate grad back to model gradient parameters
