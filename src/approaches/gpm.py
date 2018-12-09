@@ -128,7 +128,7 @@ class Approach(object):
         ep_best_mAP = 0
 
         print("Evaluate the Initialization model")
-        accu = self.validate(-1, self.model, -1)
+        accu = self.validate(t=-1, epoch=-1)
         print('=' * 100)
 
         # cycle epoch training
