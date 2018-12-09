@@ -101,6 +101,8 @@ class Approach(object):
         for param in self.base_params:
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
+                print(param.data.numel())
+
         for param in self.base_params:
             if param.requires_grad:
                 print(param.data.numel())
