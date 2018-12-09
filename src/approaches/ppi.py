@@ -93,21 +93,12 @@ class Approach(object):
         self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
 
         # allocate temporary synaptic memory
-        print(self.model.module.state_dict().keys())
-        utils.freeze_model(self.model.module.newfc)
-
+        ignored_params_id_list = list(map(id, model.newfc.parameters()))
+        base_params = filter(lambda p: id(p) not in ignored_params_id_list, model.named_parameters())
         self.grad_dims = []
-        for name, param in self.model.named_parameters():
+        for name, param in base_params:
             if param.requires_grad:
                 self.grad_dims.append(param.data.numel())
-            else:
-                print(name)
-        
-        utils.unfreeze_model(self.model.module.newfc)
-        for name, param in self.model.named_parameters():
-            if param.requires_grad:
-                self.grad_dims.append(param.data.numel())
-            else:
                 print(name)
 
         input()
