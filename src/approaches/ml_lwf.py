@@ -111,7 +111,6 @@ class Approach(object):
         model.train()
 
         end = time.time()
-        batch_cnt = int(len(train_loader))
         for i, (input, target) in enumerate(train_loader):
             target = target.to(self.device)
             input = input.to(self.device)

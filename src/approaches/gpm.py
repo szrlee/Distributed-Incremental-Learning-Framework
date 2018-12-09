@@ -179,7 +179,7 @@ class Approach(object):
         # compute loss divided by world_size and mem_batch_cnt
         loss = self.criterion(output[:,subset], target[:,subset])
         # compute gradient for each batch of memory and accumulate
-        loss.backward()
+        loss.backward(retain_graph=True)
         return self.model.parameters
 
     def train(self, t, train_loader, epoch):
@@ -192,7 +192,6 @@ class Approach(object):
         self.model.train()
         count_vio = 0
         end = time.time()
-        batch_cnt = int(len(train_loader))
         for i, (input, target) in enumerate(train_loader):
 
             target = target.to(self.device)
