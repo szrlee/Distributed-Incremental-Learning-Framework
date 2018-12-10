@@ -201,7 +201,7 @@ class Approach(object):
         subset = np.empty(0, dtype=int)
         for pre_t in self.solved_tasks:
             subset = np.unique(np.concatenate((self.Tasks[pre_t]['test_subset'], subset)))
-
+        subset = np.unique(np.concatenate((self.Tasks[self.cur_t]['test_subset'], subset)))
         # compute loss
         print(subset)
         for param in self.base_params:
