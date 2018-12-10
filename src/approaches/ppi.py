@@ -89,8 +89,8 @@ class Approach(object):
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
 
-        self.save_acc = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestAcc_'+args.time+'.pt' for t in range(len(Tasks))]
-        self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
+        self.save_seen_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPseenTasks_'+args.time+'.pt' for t in range(len(Tasks))]
+        self.save_mAP_t = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPcurTask_'+args.time+'.pt' for t in range(len(Tasks))]
 
         # allocate temporary synaptic memory
         ignored_params_id_list = list(map(id, self.model.module.newfc.parameters()))
@@ -136,16 +136,15 @@ class Approach(object):
                                 weight_decay=self.weight_decay)
         self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
 
-        best_accu = 0
-        best_mAP = 0
-        ep_best_accu = 0
-        ep_best_mAP = 0
-
         print("Evaluate the Initialization model")
-        accu = self.validate(t=-1, epoch=-1)
+        self.validate(t=-1, epoch=-1)
         print('=' * 100)
 
         # cycle epoch training
+        best_mAP_t  = 0
+        ep_best_mAP_t = 0
+        best_seen_mAP  = 0
+        ep_best_seen_mAP = 0
         for epoch in range(self.epochs):
             self.scheduler.step()
             self.sche_fc.step()
@@ -155,30 +154,30 @@ class Approach(object):
             self.train(t, train_loader, epoch)
             # evaluate on validation set
             print("===Start Evaluating")
-            accu, mAP = self.validate(t, epoch)
+            accu, mean_ap, seen_mAP, mAP_t = self.validate(t, epoch)
 
-            # remember best acc and save checkpoint
-            if accu > best_accu:
-                best_accu = accu
-                ep_best_accu = epoch
+            ## remember best mAP on cur task and save checkpoint
+            if mAP_t > best_mAP_t:
+                best_mAP_t = mAP_t
+                ep_best_mAP_t = epoch
                 # save best
                 torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.module.state_dict()
-                }, self.save_acc[t])
-                # 'optimizer_state_dict': self.optimizer.state_dict()
-            # remember best mAP and save checkpoint
-            if mAP > best_mAP:
-                best_mAP = mAP
-                ep_best_mAP = epoch
+                }, self.save_mAP_t[t])
+
+            ## remember best mAP on seen tasks and save checkpoint
+            if seen_mAP > best_seen_mAP:
+                best_seen_mAP = seen_mAP
+                ep_best_seen_mAP = epoch
                 # save best
                 torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.module.state_dict()
-                }, self.save_mAP[t])
+                }, self.save_seen_mAP[t])
 
-        print(f'Best accuracy at epoch {ep_best_accu}: {best_accu}')
-        print(f'Best mean AP at epoch {ep_best_mAP}: {best_mAP}')
+        print(f'Best mean AP for Curr Task=={t} at epoch {ep_best_mAP_t}: {best_mAP_t}')
+        print(f'Best mean AP for Seen Task<={t} at epoch {ep_best_seen_mAP}: {best_seen_mAP}')
 
         # finish solving current task and
         # then append it to solved_tasks
@@ -325,65 +324,63 @@ class Approach(object):
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
-        tol_accu = 0.0
-        tol_loss = 0.0
-        tol_ap = 0.0
-        tol_class = 0
         # switch to evaluate mode
         self.model.eval()
 
         tol_tasks = len(self.Tasks)
         cur_class = 0
+        losses = AverageMeter()
+        accuracy = AverageMeter()
+        APs = APMeter()
+        # Sum over self.Tasks[cur_t]['class_num']
+        class_num = 20
+        accuracys = []
+        
+        for cl in range(class_num):
+            accuracys.append(AverageMeter())
+        test_loader = self.Tasks[0]['test_loader']
+        for i, (input, target) in enumerate(test_loader):
+            target = target.to(self.device)
+            input = input.to(self.device)
+            with torch.no_grad():
+                # compute output
+                output = self.model(input)
+                output = torch.sigmoid(output)
+                loss = self.criterion(output, target)
+                # measure accuracy and record loss
+                (accu, accus) = self.cleba_accuracy(0, output.data, target)
+                APs.add(output, target)
+                # average inside batch
+                reduced_loss = loss.data.clone()
+                reduced_accu = accu.clone()
+                reduced_accus = accus.clone()
+                # average with other batch
+                losses.update(reduced_loss.item(), input.size(0))
+                accuracy.update(reduced_accu.item(), input.size(0))
+                for cl in range(class_num):
+                    accuracys[cl].update(reduced_accus[cl], input.size(0))
+        
+        seen_subset = np.empty(0, dtype=int)
         for cur_t in range(tol_tasks):
-            losses = AverageMeter()
-            accuracy = AverageMeter()
-            APs = APMeter()
-            class_num = self.Tasks[cur_t]['class_num']
-            accuracys = []
-            for cl in range(class_num):
-                accuracys.append(AverageMeter())
-            test_loader = self.Tasks[cur_t]['test_loader']
-            for i, (input, target) in enumerate(test_loader):
-                target = target.to(self.device)
-                input = input.to(self.device)
-                with torch.no_grad():
-
-                    # compute output
-                    output = self.model(input)
-                    output = torch.sigmoid(output)
-                    loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target)
-
-                    # measure accuracy and record loss
-                    (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
-                    APs.add(output[:,self.Tasks[cur_t]['test_subset']], target)
-
-                    reduced_loss = loss.data.clone()
-                    reduced_accu = accu.clone()
-
-                    reduced_accus = accus.clone()
-
-                    losses.update(reduced_loss.item(), input.size(0))
-                    accuracy.update(reduced_accu.item(), input.size(0))
-                    for cl in range(class_num):
-                        accuracys[cl].update(reduced_accus[cl], input.size(0))
-
-
+            subset = self.Tasks[cur_t]['test_subset']
             ap = APs.value() * 100.0
             print(' '*10+'|   AP   |  Accu  |')
-            for cl in range(class_num):
-                print(f'Class{cur_class:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
-                cur_class = cur_class + 1
-            print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
-            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=ap.mean().item()))
-
-            tol_accu = tol_accu + accuracy.avg
-            tol_loss = tol_loss + losses.avg
-            tol_ap = tol_ap + ap.sum().item()
-
-        # TODO: wrong average
-        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
+            for cl in subset:
+                print(f'Class{cl:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
+            # print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
+            mAP_cur_t = ap[subset].mean().item()
+            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=mAP_cur_t))
+            if cur_t <= t:
+                seen_subset = np.unique(np.concatenate((seen_subset, subset)))
+            if cur_t == t:
+                mAP_t = mAP_cur_t
+            
+        mean_ap = ap.mean().item()
+        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(mean_ap, accuracy.avg, losses.avg))
+        seen_mAP = ap[seen_subset].mean().item()
+        print(f'===Seen Task {seen_subset}: mean_AP {seen_mAP:3f}')
         print()
-        return (tol_accu / tol_tasks), (tol_ap/20)
+        return accuracy.avg, mean_ap, seen_mAP, mAP_t
 
     def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)

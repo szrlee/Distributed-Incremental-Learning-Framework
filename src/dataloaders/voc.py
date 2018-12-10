@@ -105,6 +105,13 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
 
     class_nums = [len(subset_i) for subset_i in test_subsets]
 
+    #
+    test_dataset = MultiLabelDataset(root='/home/ubuntu/ml-voc/JPEGImages/',
+                            label='/home/ubuntu/ml-voc/ImageSets/test_all.txt', 
+                            transform=transform_test,
+                            subset = fullset)
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
+                                            num_workers=2, pin_memory=False)
     for t in range(total_t): # default order of tasks 0, 1, 2, 3, ...
         print(f'generating dataloader for task {t}')
         test_subset = test_subsets[t]
@@ -120,15 +127,9 @@ def GetTasks(approach, batch_size, memory_size=None, memory_mini_batch_size=None
                                     label=train_file,
                                     transform=transform_train,
                                     subset = train_subset)
-        test_dataset = MultiLabelDataset(root='/home/ubuntu/ml-voc/JPEGImages/',
-                                    label='/home/ubuntu/ml-voc/ImageSets/test_all.txt', 
-                                    transform=transform_test,
-                                    subset = test_subset)
-
         train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, 
                                                 num_workers=2, pin_memory=False)
-        test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, 
-                                                num_workers=2, pin_memory=False)
+
         task = {}
         task['train_dataset'] = train_dataset
         task['test_dataset'] = test_dataset
