@@ -1,3 +1,7 @@
+# # manualy set tasks specific number
+# access_prev_label =  ['finetune_aug', 'ppi', \
+#                            'lwf_aug', 'lwf_aug_ppi']
+# no_access_prev_label = ['finetune', 'lwf', 'lwf_ppi']
 import sys,os,argparse,time
 import numpy as np
 import torch
@@ -9,7 +13,8 @@ from torch.utils.data import DataLoader
 parser=argparse.ArgumentParser(description='Continual Learning Framework')
 parser.add_argument('--experiment', default='', type=str, required=True, choices=['voc'], help='(default=%(default)s)')
 parser.add_argument('--approach', default='', type=str, required=True, \
-    choices=['joint_train', 'fine_tune', 'ml_lwf', 'gpm', 'ml_lwf_gpm', 'ppi'], help='(default=%(default)s)')
+    choices=['joint_train', 'finetune', 'lwf', 'lwf_ppi', 'ppi', \
+    'finetune_aug', 'lwf_aug', 'lwf_aug_ppi'], help='(default=%(default)s)')
 parser.add_argument('--save_dir', default='../res/model/', type=str, required=False, help='(default=%(default)s)')
 parser.add_argument('--time', default='now', type=str, required=True, help='(default=%(default)s)')
 
@@ -38,13 +43,10 @@ from dataloaders import voc
 
 # Args -- Approach
 from approaches import joint_train
-from approaches import fine_tune
-from approaches import ml_lwf
-from approaches import gpm
-from approaches import ml_lwf_gpm
-
+from approaches import finetune
+from approaches import lwf
 from approaches import ppi
-
+from approaches import lwf_ppi
 
 # Args -- Network
 from networks import resnet
@@ -62,24 +64,20 @@ def main():
         approach = joint_train
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
-    elif args.approach == 'fine_tune':
-        approach = fine_tune
+    elif args.approach == 'finetune':
+        approach = finetune
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
-    elif args.approach == 'ml_lwf':
-        approach = ml_lwf
-        assert(args.memory_size is None)
-        assert(args.memory_mini_batch_size is None)
-    elif args.approach == 'gpm':
-        approach = gpm
-        assert(args.memory_size is None)
-        assert(args.memory_mini_batch_size is None)
-    elif args.approach == 'ml_lwf_gpm':
-        approach = ml_lwf_gpm
+    elif args.approach == 'lwf':
+        approach = lwf
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'ppi':
         approach = ppi
+        assert(args.memory_size is None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'lwf_ppi':
+        approach = lwf_ppi
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     else:

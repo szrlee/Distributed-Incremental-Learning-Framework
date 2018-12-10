@@ -15,7 +15,7 @@ import quadprog
 def store_grad(pp, grads, grad_dims, tid):
     """
         This stores parameter gradients of past tasks.
-        pp: parameters
+        pp: parameters iterator
         grads: gradients
         grad_dims: list with number of parameters per layers
         tid: task id
@@ -23,7 +23,7 @@ def store_grad(pp, grads, grad_dims, tid):
     # store the gradients
     grads[:, tid].fill_(0.0)
     cnt = 0
-    for param in pp():
+    for param in pp:
         if param.grad is not None:
             beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
             en = sum(grad_dims[:cnt + 1])
@@ -35,12 +35,12 @@ def overwrite_grad(pp, newgrad, grad_dims):
     """
         This is used to overwrite the gradients with a new gradient
         vector, whenever violations occur.
-        pp: parameters
+        pp: parameters iterator
         newgrad: corrected gradient
         grad_dims: list storing number of parameters at each layer
     """
     cnt = 0
-    for param in pp():
+    for param in pp:
         if param.grad is not None:
             beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
             en = sum(grad_dims[:cnt + 1])
@@ -74,7 +74,7 @@ def project2cone2(gradient, memories, margin=0.5, eps=1e-3):
 ########################################################################
 # Model class description
 class Approach(object):
-    """ Gradient Pseudo Memory """
+    """ Projection as Pareto Inprovement """
 
     def __init__(self, model, args, Tasks):
         self.model = model
@@ -89,19 +89,19 @@ class Approach(object):
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
 
-        self.save_acc = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestAcc_'+args.time+'.pt' for t in range(len(Tasks))]
-        self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
-        # distillation related parameters
-        self.model_old = None
-        self.balance = [1, 1]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
-        self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
-        print(f'distillation related parameters:\t'
-                f'balance lambdas = {self.balance}\t'
-                f'annelating factor T = {self.T}')
+        self.save_seen_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPseenTasks_'+args.time+'.pt' for t in range(len(Tasks))]
+        self.save_mAP_t = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPcurTask_'+args.time+'.pt' for t in range(len(Tasks))]
+
         # allocate temporary synaptic memory
+        ignored_params_id_list = list(map(id, self.model.module.newfc.parameters()))
+        # self.base_params = filter(lambda p: 'newfc' not in p[0], self.model.named_parameters())
+        self.base_params = [p for p in self.model.module.parameters() if id(p) not in ignored_params_id_list]
+
         self.grad_dims = []
-        for param in self.model.parameters():
-            self.grad_dims.append(param.data.numel())
+        for param in self.base_params:
+            if param.requires_grad:
+                self.grad_dims.append(param.data.numel())
+
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
         self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
@@ -110,85 +110,139 @@ class Approach(object):
         # for prefetch memory for cache
         self.cur_t = -1
 
+        # alternate updating
+        self.n_sub_iter = 3
+
+        # distillation related parameters
+        self.online_model = True
+        self.old_models = [None]*(self.total_tasks-1)
+        self.model_old = None
+        self.balance = [1, 1]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
+        self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
+        print(f'distillation related parameters:\t'
+                f'balance lambdas = {self.balance}\t'
+                f'annelating factor T = {self.T}')
+
     def solve(self, t):
         self.cur_t = t
         # load best model in previous task (Start from the second task)
         if t>0:
-            print(f"loading best model in previous task {t-1}")
-            checkpoint = torch.load(self.save_mAP[t-1])
+            # model init
+            print(f"loading best (seen_mAP) model in previous task {t-1}")
+            checkpoint = torch.load(self.save_seen_mAP[t-1])
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
             print(f"loading completed!")
-            # deep copy best prev_task model and freeze it
-            self.model_old = deepcopy(self.model)
-            utils.freeze_model(self.model_old)
+            # load old model
+            if self.online_model:
+                # deep copy best prev_task model and freeze it
+                self.model_old = deepcopy(self.model)
+                utils.freeze_model(self.model_old)
+            else:
+                for pre_t in range(t):
+                    self.old_models[pre_t] = deepcopy(self.model)
+                    print(f"loading best (mAP_t) model in task {pre_t}")
+                    checkpoint = torch.load(self.save_mAP_t[pre_t])
+                    self.old_models[pre_t].module.load_state_dict(checkpoint['model_state_dict'])
+                    print(f"loading old_models[{pre_t}] completed!")
+                    utils.freeze_model(self.old_models[pre_t])
+                    print(f"freeze old_models[{pre_t}] completed!")
 
         # prepare task specific object
         task = self.Tasks[t]
         train_loader = task['train_loader']
 
-        self.optimizer = torch.optim.SGD(self.model.parameters(), self.lr,
+        self.optimizer = torch.optim.SGD(self.base_params, self.lr,
                                 momentum=self.momentum,
                                 weight_decay=self.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[8], gamma=0.1)
-
-        best_accu = 0
-        best_mAP = 0
-        ep_best_accu = 0
-        ep_best_mAP = 0
+        
+        self.optim_fc = torch.optim.SGD(self.model.module.newfc.parameters(), self.lr,
+                                momentum=self.momentum,
+                                weight_decay=self.weight_decay)
+        self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
 
         print("Evaluate the Initialization model")
-        accu = self.validate(t=-1, epoch=-1)
+        self.validate(t=t-1, epoch=-1)
         print('=' * 100)
 
         # cycle epoch training
+        best_mAP_t  = 0
+        ep_best_mAP_t = 0
+        best_seen_mAP  = 0
+        ep_best_seen_mAP = 0
         for epoch in range(self.epochs):
             self.scheduler.step()
+            self.sche_fc.step()
 
             # train for one epoch
             print("===Start Training")
             self.train(t, train_loader, epoch)
             # evaluate on validation set
             print("===Start Evaluating")
-            accu, mAP = self.validate(t, epoch)
+            accu, mean_ap, seen_mAP, mAP_t = self.validate(t, epoch)
 
-            # remember best acc and save checkpoint
-            if accu > best_accu:
-                best_accu = accu
-                ep_best_accu = epoch
+            ## remember best mAP on cur task and save checkpoint
+            if mAP_t > best_mAP_t:
+                best_mAP_t = mAP_t
+                ep_best_mAP_t = epoch
                 # save best
                 torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.module.state_dict()
-                }, self.save_acc[t])
-                # 'optimizer_state_dict': self.optimizer.state_dict()
-            # remember best mAP and save checkpoint
-            if mAP > best_mAP:
-                best_mAP = mAP
-                ep_best_mAP = epoch
+                }, self.save_mAP_t[t])
+
+            ## remember best mAP on seen tasks and save checkpoint
+            if seen_mAP > best_seen_mAP:
+                best_seen_mAP = seen_mAP
+                ep_best_seen_mAP = epoch
                 # save best
                 torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.module.state_dict()
-                }, self.save_mAP[t])
+                }, self.save_seen_mAP[t])
 
-        print(f'Best accuracy at epoch {ep_best_accu}: {best_accu}')
-        print(f'Best mean AP at epoch {ep_best_mAP}: {best_mAP}')
+        print(f'Best mean AP for Curr Task=={t} at epoch {ep_best_mAP_t}: {best_mAP_t}')
+        print(f'Best mean AP for Seen Task<={t} at epoch {ep_best_seen_mAP}: {best_seen_mAP}')
 
         # finish solving current task and
         # then append it to solved_tasks
         if t not in self.solved_tasks:
             self.solved_tasks.append(t)
         
-        return best_accu
-
-    def compute_pre_param(self, t, output, target, epoch):
+    def compute_pre_param(self, t, output, output_old, target, epoch):
+        assert t != self.cur_t
         self.optimizer.zero_grad()
+        self.optim_fc.zero_grad()
         subset = self.Tasks[t]['test_subset']
         # compute loss
-        loss = self.criterion(output[:,subset], target[:,subset])
-        # compute gradient for each batch of memory and accumulate
+        loss = self.criterion(output[:,subset], output_old[:,subset])
+        # compute gradient
         loss.backward(retain_graph=True)
-        return self.model.parameters
+        return self.base_params
+
+    def update_task_param(self, output, output_old, target, epoch, iter, sub_iter):
+        self.optimizer.zero_grad()
+        self.optim_fc.zero_grad()
+        # subset = np.empty(0, dtype=int)
+        # # freeze head
+        # for param in self.base_params:
+        #     param.requires_grad = False
+        # compute loss
+        subset = self.Tasks[self.cur_t]['test_subset']
+        loss = self.criterion(output[:,subset], target)
+        ## added with prev task loss
+        for pre_t in self.solved_tasks:
+            subset = self.Tasks[pre_t]['test_subset']
+            loss += self.criterion(output[:,subset], output_old[:,subset])
+
+        # compute gradient and retain computation graph
+        loss.backward(retain_graph=True)
+        # fc layer update
+        self.optim_fc.step()
+        # # unfreeze head
+        # for param in self.base_params:
+        #     param.requires_grad = True
+        return self.base_params
 
     def train(self, t, train_loader, epoch):
         """Train for one epoch on the training set"""
@@ -201,38 +255,44 @@ class Approach(object):
         count_vio = 0
         end = time.time()
         for i, (input, target) in enumerate(train_loader):
-
             target = target.to(self.device)
             input = input.to(self.device)
+            if self.online_model:
+                output_old = self.model_old(input)
+            else:
+                raise NotImplementedError
+            # ================================================================= #
+            # subiteration for task spec param
+            utils.freeze_param(self.base_params)
+            for sub_i in range(self.n_sub_iter):
+                # compute output
+                output = self.model(input)
+                output = torch.sigmoid(output)
+                # update task specific param
+                self.update_task_param(output, output_old, target, epoch, i, sub_i)
+            utils.unfreeze_param(self.base_params)
+            # ================================================================= #
 
+            # ================================================================= #
             # compute output
             output = self.model(input)
             output = torch.sigmoid(output)
-
             # ================================================================= #
             # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
-                # compute output from freezed old model START the second task (t>0)
-                output_old = self.model_old(input)
-                output_old = torch.sigmoid(output_old)
-                # print(f"====== compute grad for pre observed tasks: {self.solved_tasks}")
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
-                    # print(f"== BEGIN: compute grad for pre observed tasks: {pre_t}")
-                    end_pre = time.time()
-                    pre_param = self.compute_pre_param(pre_t, output, output_old, epoch)
-                    # print(f"== END: compute grad for pre observed task: {pre_t} | TIME: {(time.time()-end_pre)} ")
+                    pre_param = self.compute_pre_param(pre_t, output, output_old, target, epoch)
                     ## store prev grad to tensor
                     store_grad(pre_param, self.grads, self.grad_dims, pre_t)
-
-
             # ================================================================= #
             # compute grad for current task
-            subset = self.Tasks[t]['train_subset']
+            subset = self.Tasks[t]['test_subset']
             loss = self.criterion(output[:,subset], target)
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
+            self.optim_fc.zero_grad()
             loss.backward()
 
             # ================================================================== #
@@ -241,7 +301,7 @@ class Approach(object):
                 # print("== BEGIN: check constraints; if violate, get surrogate grad.")
                 end_opt = time.time()
                 ## copy gradient for data at current task to a tensor and clear grad
-                store_grad(self.model.parameters, self.grads, self.grad_dims, t)
+                store_grad(self.base_params, self.grads, self.grad_dims, t)
                 ## check if current step gradient violate constraints
                 indx = torch.cuda.LongTensor(self.solved_tasks)
                 dotp = torch.mm(self.grads[:, t].unsqueeze(0),
@@ -254,10 +314,11 @@ class Approach(object):
                     count_vio += 1
                     # if violate, use quadprog to get new grad
                     self.optimizer.zero_grad()
+                    self.optim_fc.zero_grad()
                     project2cone2(self.grads[:, t].unsqueeze(1),
                               self.grads.index_select(1, indx), self.margin)
                     ## copy surrogate grad back to model gradient parameters
-                    overwrite_grad(self.model.parameters, self.grads[:, t],
+                    overwrite_grad(self.base_params, self.grads[:, t],
                                self.grad_dims)
                 # print(f"== END: violate constraints? : {violate_constr} | TIME: {time.time()-end_opt}")
             # ================================================================= #
@@ -276,77 +337,76 @@ class Approach(object):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % self.print_freq == 0:
+            if (i+1) % self.print_freq == 0 or (i+1) == len(train_loader):
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
-                      '#Surr [{count_vio}/{batch_cnt}]'.format(
-                          epoch, i, len(train_loader), batch_time=batch_time,
+                      '#Proj [{count_vio}/{batch_cnt}]'.format(
+                          epoch, i+1, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy,
                           count_vio=count_vio, batch_cnt=len(train_loader)))
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
-        tol_accu = 0.0
-        tol_loss = 0.0
-        tol_ap = 0.0
-        tol_class = 0
         # switch to evaluate mode
         self.model.eval()
 
         tol_tasks = len(self.Tasks)
         cur_class = 0
+        losses = AverageMeter()
+        accuracy = AverageMeter()
+        APs = APMeter()
+        # Sum over self.Tasks[cur_t]['class_num']
+        class_num = 20
+        accuracys = []
+        
+        for cl in range(class_num):
+            accuracys.append(AverageMeter())
+        test_loader = self.Tasks[0]['test_loader']
+        for i, (input, target) in enumerate(test_loader):
+            target = target.to(self.device)
+            input = input.to(self.device)
+            with torch.no_grad():
+                # compute output
+                output = self.model(input)
+                output = torch.sigmoid(output)
+                loss = self.criterion(output, target)
+                # measure accuracy and record loss
+                (accu, accus) = self.cleba_accuracy(0, output.data, target)
+                APs.add(output, target)
+                # average inside batch
+                reduced_loss = loss.data.clone()
+                reduced_accu = accu.clone()
+                reduced_accus = accus.clone()
+                # average with other batch
+                losses.update(reduced_loss.item(), input.size(0))
+                accuracy.update(reduced_accu.item(), input.size(0))
+                for cl in range(class_num):
+                    accuracys[cl].update(reduced_accus[cl], input.size(0))
+        
+        seen_subset = np.empty(0, dtype=int)
+        mAP_t = 0.0
         for cur_t in range(tol_tasks):
-            losses = AverageMeter()
-            accuracy = AverageMeter()
-            APs = APMeter()
-            class_num = self.Tasks[cur_t]['class_num']
-            accuracys = []
-            for cl in range(class_num):
-                accuracys.append(AverageMeter())
-            test_loader = self.Tasks[cur_t]['test_loader']
-            for i, (input, target) in enumerate(test_loader):
-                target = target.to(self.device)
-                input = input.to(self.device)
-                with torch.no_grad():
-
-                    # compute output
-                    output = self.model(input)
-                    output = torch.sigmoid(output)
-                    loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target)
-
-                    # measure accuracy and record loss
-                    (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
-                    APs.add(output[:,self.Tasks[cur_t]['test_subset']], target)
-
-                    reduced_loss = loss.data.clone()
-                    reduced_accu = accu.clone()
-
-                    reduced_accus = accus.clone()
-
-                    losses.update(reduced_loss.item(), input.size(0))
-                    accuracy.update(reduced_accu.item(), input.size(0))
-                    for cl in range(class_num):
-                        accuracys[cl].update(reduced_accus[cl], input.size(0))
-
-
+            subset = self.Tasks[cur_t]['test_subset']
             ap = APs.value() * 100.0
             print(' '*10+'|   AP   |  Accu  |')
-            for cl in range(class_num):
-                print(f'Class{cur_class:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
-                cur_class = cur_class + 1
-            print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
-            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=ap.mean().item()))
-
-            tol_accu = tol_accu + accuracy.avg
-            tol_loss = tol_loss + losses.avg
-            tol_ap = tol_ap + ap.sum().item()
-
-        # TODO: wrong average
-        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
+            for cl in subset:
+                print(f'Class{cl:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
+            # print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
+            mAP_cur_t = ap[subset].mean().item()
+            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=mAP_cur_t))
+            if cur_t <= t:
+                seen_subset = np.unique(np.concatenate((seen_subset, subset)))
+            if cur_t == t:
+                mAP_t = mAP_cur_t
+            
+        mean_ap = ap.mean().item()
+        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(mean_ap, accuracy.avg, losses.avg))
+        seen_mAP = ap[seen_subset].mean().item()
+        print(f'===Seen Labels {seen_subset}: mean_AP {seen_mAP:3f}')
         print()
-        return (tol_accu / tol_tasks), (tol_ap/20)
+        return accuracy.avg, mean_ap, seen_mAP, mAP_t
 
     def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
@@ -354,8 +414,10 @@ class Approach(object):
 
         if stat == 'train':
             output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
+        elif stat == 'test':
+            output = output.cpu().numpy()
         else:
-            output = output.cpu().numpy()[:,self.Tasks[t]['test_subset']]
+            raise NotImplementedError
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()
