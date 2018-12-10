@@ -184,8 +184,6 @@ class Approach(object):
         if t not in self.solved_tasks:
             self.solved_tasks.append(t)
         
-        return best_accu
-
     def compute_pre_param(self, t, output, target, epoch):
         self.optimizer.zero_grad()
         self.optim_fc.zero_grad()
