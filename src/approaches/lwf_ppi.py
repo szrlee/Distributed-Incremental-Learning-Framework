@@ -132,20 +132,20 @@ class Approach(object):
             checkpoint = torch.load(self.save_seen_mAP[t-1])
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
             print(f"loading completed!")
-            # load old model
-            if self.online_model:
-                # deep copy best prev_task model and freeze it
-                self.model_old = deepcopy(self.model)
-                utils.freeze_model(self.model_old)
-            else:
-                for pre_t in range(t):
-                    self.old_models[pre_t] = deepcopy(self.model)
-                    print(f"loading best (mAP_t) model in task {pre_t}")
-                    checkpoint = torch.load(self.save_mAP_t[pre_t])
-                    self.old_models[pre_t].module.load_state_dict(checkpoint['model_state_dict'])
-                    print(f"loading old_models[{pre_t}] completed!")
-                    utils.freeze_model(self.old_models[pre_t])
-                    print(f"freeze old_models[{pre_t}] completed!")
+            # # load old model
+            # if self.online_model:
+            # deep copy best prev_task model and freeze it
+            self.model_old = deepcopy(self.model)
+            utils.freeze_model(self.model_old)
+            # else:
+            #     for pre_t in range(t):
+            #         self.old_models[pre_t] = deepcopy(self.model)
+            #         print(f"loading best (mAP_t) model in task {pre_t}")
+            #         checkpoint = torch.load(self.save_mAP_t[pre_t])
+            #         self.old_models[pre_t].module.load_state_dict(checkpoint['model_state_dict'])
+            #         print(f"loading old_models[{pre_t}] completed!")
+            #         utils.freeze_model(self.old_models[pre_t])
+            #         print(f"freeze old_models[{pre_t}] completed!")
 
         # prepare task specific object
         task = self.Tasks[t]
@@ -218,7 +218,7 @@ class Approach(object):
         loss = self.criterion(output[:,subset], output_old[:,subset])
         # compute gradient
         loss.backward(retain_graph=True)
-        return self.base_params
+        return self.base_params, loss.data.item()
 
     def update_task_param(self, output, output_old, target, epoch, iter, sub_iter):
         self.optimizer.zero_grad()
@@ -257,10 +257,12 @@ class Approach(object):
         for i, (input, target) in enumerate(train_loader):
             target = target.to(self.device)
             input = input.to(self.device)
-            if self.online_model:
-                output_old = self.model_old(input) if self.model_old is not None else None
-            else:
-                raise NotImplementedError
+            # if self.online_model:
+            output_old = self.model_old(input) if self.model_old is not None else None
+            output_old = torch.sigmoid(output_old) if self.model_old is not None else None
+
+            # else:
+            #     raise NotImplementedError
             # ================================================================= #
             # subiteration for task spec param
             utils.freeze_param(self.base_params)
@@ -279,16 +281,19 @@ class Approach(object):
             output = torch.sigmoid(output)
             # ================================================================= #
             # compute grad for previous tasks
+            loss_distill = torch.tensor(0.0).cuda()
             if len(self.solved_tasks) > 0:
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
-                    pre_param = self.compute_pre_param(pre_t, output, output_old, target, epoch)
+                    pre_param, loss = self.compute_pre_param(pre_t, output, output_old, target, epoch)
                     ## store prev grad to tensor
                     store_grad(pre_param, self.grads, self.grad_dims, pre_t)
+                    ## compute distill loss
+                    loss_distill += self.balance[pre_t] * loss
             # ================================================================= #
             # compute grad for current task
-            subset = self.Tasks[t]['test_subset']
+            subset = self.Tasks[t]['train_subset']
             loss = self.criterion(output[:,subset], target)
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
@@ -342,9 +347,11 @@ class Approach(object):
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
+                      'distill {loss_distill:.4f}\t'
                       '#Proj [{count_vio}/{batch_cnt}]'.format(
                           epoch, i+1, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy,
+                          loss_distill = loss_distill,
                           count_vio=count_vio, batch_cnt=len(train_loader)))
 
     def validate(self, t, epoch):
