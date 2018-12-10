@@ -44,6 +44,7 @@ from dataloaders import voc
 # Args -- Approach
 from approaches import joint_train
 from approaches import finetune
+from approaches import finetune_aug
 from approaches import lwf
 from approaches import ppi
 from approaches import lwf_ppi
@@ -66,6 +67,10 @@ def main():
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'finetune':
         approach = finetune
+        assert(args.memory_size is None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'finetune_aug':
+        approach = finetune_aug
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'lwf':
