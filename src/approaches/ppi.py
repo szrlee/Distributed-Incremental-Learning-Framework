@@ -198,19 +198,23 @@ class Approach(object):
     def update_task_param(self, output, target, epoch):
         self.optimizer.zero_grad()
         self.optim_fc.zero_grad()
-        subset = np.empty(0, dtype=int)
-        for pre_t in self.solved_tasks:
-            subset = np.unique(np.concatenate((self.Tasks[pre_t]['test_subset'], subset)))
-        subset = np.unique(np.concatenate((self.Tasks[self.cur_t]['test_subset'], subset)))
-        # compute loss
-        print(subset)
+        # subset = np.empty(0, dtype=int)
+        # freeze head
         for param in self.base_params:
             param.requires_grad = False
+        # compute loss
+        subset = self.Tasks[self.cur_t]['test_subset']
         loss = self.criterion(output[:,subset], target[:,subset])
-        # compute gradient for each batch of memory and accumulate
+        ## added with prev task loss
+        for pre_t in self.solved_tasks:
+            subset = self.Tasks[pre_t]['test_subset']
+            loss += self.criterion(output[:,subset], target[:,subset])
+
+        # compute gradient and retain computation graph
         loss.backward(retain_graph=True)
         # fc layer update
         self.optim_fc.step()
+        # unfreeze head
         for param in self.base_params:
             param.requires_grad = True
         return self.base_params
