@@ -32,6 +32,14 @@ class Approach(object):
         # self.base_params = filter(lambda p: 'newfc' not in p[0], self.model.named_parameters())
         self.base_params = [p for p in self.model.module.parameters() if id(p) not in ignored_params_id_list]
 
+        # auto-maintain the number of total tasks
+        self.total_tasks = len(Tasks)
+        self.solved_tasks = []
+        # for prefetch memory for cache
+        self.cur_t = -1
+
+        # alternate updating
+        self.n_sub_iter = 3
 
     def solve(self, t):
         self.cur_t = t
@@ -57,7 +65,7 @@ class Approach(object):
         self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
 
         print("Evaluate the Initialization model")
-        elf.validate(t=t-1, -1)
+        self.validate(t=t-1, epoch=-1)
         print('=' * 100)
 
         # cycle epoch training
