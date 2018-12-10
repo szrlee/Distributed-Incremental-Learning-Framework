@@ -258,7 +258,7 @@ class Approach(object):
             target = target.to(self.device)
             input = input.to(self.device)
             if self.online_model:
-                output_old = self.model_old(input)
+                output_old = self.model_old(input) if self.model_old is not None else None
             else:
                 raise NotImplementedError
             # ================================================================= #
