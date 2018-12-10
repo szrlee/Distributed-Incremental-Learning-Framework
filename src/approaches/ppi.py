@@ -318,7 +318,7 @@ class Approach(object):
                       '#Proj [{count_vio}/{batch_cnt}]'.format(
                           epoch, i+1, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy,
-                          count_vio=count_vio, batch_cnt=len(train_loader))
+                          count_vio=count_vio, batch_cnt=len(train_loader)))
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
