@@ -24,15 +24,21 @@ class Approach(object):
         self.print_freq = args.print_freq
         self.criterion = torch.nn.BCELoss().cuda()
 
-        self.save_acc = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestAcc_'+args.time+'.pt' for t in range(len(Tasks))]
-        self.save_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAP_'+args.time+'.pt' for t in range(len(Tasks))]
+        self.save_seen_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPseenTasks_'+args.time+'.pt' for t in range(len(Tasks))]
+        self.save_mAP_t = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPcurTask_'+args.time+'.pt' for t in range(len(Tasks))]
+
+        # allocate temporary synaptic memory
+        ignored_params_id_list = list(map(id, self.model.module.newfc.parameters()))
+        # self.base_params = filter(lambda p: 'newfc' not in p[0], self.model.named_parameters())
+        self.base_params = [p for p in self.model.module.parameters() if id(p) not in ignored_params_id_list]
 
 
     def solve(self, t):
+        self.cur_t = t
         # load best model in previous task (Start from the second task)
         if t>0:
             print(f"loading best model in previous task {t-1}")
-            checkpoint = torch.load(self.save_mAP[t-1])
+            checkpoint = torch.load(self.save_seen_mAP[t-1])
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
             print(f"loading completed!")
 
@@ -40,169 +46,201 @@ class Approach(object):
         task = self.Tasks[t]
         train_loader = task['train_loader']
 
-        self.optimizer = torch.optim.SGD(self.model.parameters(), self.lr,
+        self.optimizer = torch.optim.SGD(self.base_params, self.lr,
                                 momentum=self.momentum,
                                 weight_decay=self.weight_decay)
         self.scheduler = torch.optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[8], gamma=0.1)
-
-        best_accu = 0
-        best_mAP = 0
-        ep_best_accu = 0
-        ep_best_mAP = 0
+        
+        self.optim_fc = torch.optim.SGD(self.model.module.newfc.parameters(), self.lr,
+                                momentum=self.momentum,
+                                weight_decay=self.weight_decay)
+        self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
 
         print("Evaluate the Initialization model")
-        accu = self.validate(-1, self.model, -1)
+        elf.validate(t=t-1, -1)
         print('=' * 100)
 
+        # cycle epoch training
+        best_mAP_t  = 0
+        ep_best_mAP_t = 0
+        best_seen_mAP  = 0
+        ep_best_seen_mAP = 0
         for epoch in range(self.epochs):
             self.scheduler.step()
+            self.sche_fc.step()
 
             # train for one epoch
             print("===Start Training")
-            self.train(t, train_loader, self.model, self.optimizer, epoch)
+            self.train(t, train_loader, epoch)
             # evaluate on validation set
             print("===Start Evaluating")
-            accu, mAP = self.validate(t, self.model, epoch)
+            accu, mean_ap, seen_mAP, mAP_t = self.validate(t, epoch)
 
-            # remember best acc and save checkpoint
-            if accu > best_accu:
-                best_accu = accu
-                ep_best_accu = epoch
+            ## remember best mAP on cur task and save checkpoint
+            if mAP_t > best_mAP_t:
+                best_mAP_t = mAP_t
+                ep_best_mAP_t = epoch
                 # save best
                 torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.module.state_dict()
-                }, self.save_acc[t])
-                # 'optimizer_state_dict': self.optimizer.state_dict()
-            # remember best mAP and save checkpoint
-            if mAP > best_mAP:
-                best_mAP = mAP
-                ep_best_mAP = epoch
+                }, self.save_mAP_t[t])
+
+            ## remember best mAP on seen tasks and save checkpoint
+            if seen_mAP > best_seen_mAP:
+                best_seen_mAP = seen_mAP
+                ep_best_seen_mAP = epoch
                 # save best
                 torch.save({
                 'epoch': epoch,
                 'model_state_dict': self.model.module.state_dict()
-                }, self.save_mAP[t])
+                }, self.save_seen_mAP[t])
 
-        print(f'Best accuracy at epoch {ep_best_accu}: {best_accu}')
-        print(f'Best mean AP at epoch {ep_best_mAP}: {best_mAP}')
-
-
-        return best_accu
+        print(f'Best mean AP for Curr Task=={t} at epoch {ep_best_mAP_t}: {best_mAP_t}')
+        print(f'Best mean AP for Seen Task<={t} at epoch {ep_best_seen_mAP}: {best_seen_mAP}')
 
 
-    def train(self, t, train_loader, model, optimizer, epoch):
+
+
+    def update_task_param(self, output, target, epoch, iter, sub_iter):
+        self.optimizer.zero_grad()
+        self.optim_fc.zero_grad()
+        # subset = np.empty(0, dtype=int)
+        # # freeze head
+        # for param in self.base_params:
+        #     param.requires_grad = False
+        # compute loss
+        subset = self.Tasks[self.cur_t]['test_subset']
+        loss = self.criterion(output[:,subset], target)
+        # ## added with prev task loss
+        # for pre_t in self.solved_tasks:
+        #     subset = self.Tasks[pre_t]['test_subset']
+        #     loss += self.criterion(output[:,subset], target[:,subset])
+
+        # compute gradient and retain computation graph
+        loss.backward(retain_graph=True)
+        # fc layer update
+        self.optim_fc.step()
+        # # unfreeze head
+        # for param in self.base_params:
+        #     param.requires_grad = True
+        return self.base_params
+
+    def train(self, t, train_loader, epoch):
         """Train for one epoch on the training set"""
         batch_time = AverageMeter()
         losses = AverageMeter()
         accuracy = AverageMeter()
         # switch to train mode
-        model.train()
+        self.model.train()
 
         end = time.time()
         for i, (input, target) in enumerate(train_loader):
             target = target.to(self.device)
             input = input.to(self.device)
+            # ================================================================= #
+            # subiteration for task spec param
+            utils.freeze_param(self.base_params)
+            for sub_i in range(self.n_sub_iter):
+                # compute output
+                output = self.model(input)
+                output = torch.sigmoid(output)
+                # update task specific param
+                self.update_task_param(output, target, epoch, i, sub_i)
+            utils.unfreeze_param(self.base_params)
+            # ================================================================= #
 
+            # ================================================================= #
             # compute output
-            output = model(input)
+            output = self.model(input)
             output = torch.sigmoid(output)
-
             loss = self.criterion(output[:,self.Tasks[t]['train_subset']], target)
+            # compute gradient within constraints and backprop errors
+            self.optimizer.zero_grad()
+            self.optim_fc.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
             # measure accuracy and record loss
-            (accu, accus) = self.cleba_accuracy(t, output.data, target, 'train')
+            accu, _ = self.cleba_accuracy(t, output.data, target, 'train')
 
             reduced_loss = loss.data.clone()
             reduced_accu = accu.clone()
             losses.update(reduced_loss.item(), input.size(0))
             accuracy.update(reduced_accu.item(), input.size(0))
 
-            # compute gradient and do SGD step
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % self.print_freq == 0:
+            if (i+1) % self.print_freq == 0 or (i+1) == len(train_loader):
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})'.format(
-                          epoch, i, len(train_loader), batch_time=batch_time,
+                          epoch, i+1, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy))
 
-    def validate(self, t, model, epoch):
+    def validate(self, t, epoch):
         """Perform validation on the validation set"""
-        tol_accu = 0.0
-        tol_loss = 0.0
-        tol_ap = 0.0
-        tol_class = 0
         # switch to evaluate mode
-        model.eval()
+        self.model.eval()
 
         tol_tasks = len(self.Tasks)
         cur_class = 0
+        losses = AverageMeter()
+        accuracy = AverageMeter()
+        APs = APMeter()
+        # Sum over self.Tasks[cur_t]['class_num']
+        class_num = 20
+        accuracys = []
+        
+        for cl in range(class_num):
+            accuracys.append(AverageMeter())
+        test_loader = self.Tasks[0]['test_loader']
+        for i, (input, target) in enumerate(test_loader):
+            target = target.to(self.device)
+            input = input.to(self.device)
+            with torch.no_grad():
+                # compute output
+                output = self.model(input)
+                output = torch.sigmoid(output)
+                loss = self.criterion(output, target)
+                # measure accuracy and record loss
+                (accu, accus) = self.cleba_accuracy(0, output.data, target)
+                APs.add(output, target)
+                # average inside batch
+                reduced_loss = loss.data.clone()
+                reduced_accu = accu.clone()
+                reduced_accus = accus.clone()
+                # average with other batch
+                losses.update(reduced_loss.item(), input.size(0))
+                accuracy.update(reduced_accu.item(), input.size(0))
+                for cl in range(class_num):
+                    accuracys[cl].update(reduced_accus[cl], input.size(0))
+        
+        seen_subset = np.empty(0, dtype=int)
+        mAP_t = 0.0
         for cur_t in range(tol_tasks):
-            losses = AverageMeter()
-            accuracy = AverageMeter()
-            APs = APMeter()
-            class_num = self.Tasks[cur_t]['class_num']
-            accuracys = []
-            for cl in range(class_num):
-                accuracys.append(AverageMeter())
-            test_loader = self.Tasks[cur_t]['test_loader']
-            for i, (input, target) in enumerate(test_loader):
-                target = target.to(self.device)
-                input = input.to(self.device)
-                with torch.no_grad():
-
-                    # compute output
-                    output = model(input)
-                    output = torch.sigmoid(output)
-                    loss = self.criterion(output[:,self.Tasks[cur_t]['test_subset']], target)
-
-                    # measure accuracy and record loss
-                    (accu, accus) = self.cleba_accuracy(cur_t, output.data, target)
-                    APs.add(output[:,self.Tasks[cur_t]['test_subset']], target)
-
-                    reduced_loss = loss.data.clone()
-                    reduced_accu = accu.clone()
-
-                    reduced_accus = accus.clone()
-
-                    losses.update(reduced_loss.item(), input.size(0))
-                    accuracy.update(reduced_accu.item(), input.size(0))
-                    for cl in range(class_num):
-                        accuracys[cl].update(reduced_accus[cl], input.size(0))
-
-                    # if i % self.print_freq == 0 and rank == 0: 
-                    # print('Epoch: [{0}][{1}/{2}]\t'
-                    #       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
-                    #       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                    #       'Accu {accuracy.val:.3f} ({accuracy.avg:.3f})'.format(
-                    #           epoch, i, len(test_loader), batch_time=batch_time,
-                    #           loss=losses, accuracy=accuracy))
-
+            subset = self.Tasks[cur_t]['test_subset']
             ap = APs.value() * 100.0
             print(' '*10+'|   AP   |  Accu  |')
-            for cl in range(class_num):
-                print(f'Class{cur_class:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
-                cur_class = cur_class + 1
-            print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
-            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=ap.mean().item()))
-
-            tol_accu = tol_accu + accuracy.avg
-            tol_loss = tol_loss + losses.avg
-            tol_ap = tol_ap + ap.sum().item()
-
-        # TODO: wrong average
-        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(tol_ap/20, tol_accu/tol_tasks, tol_loss/tol_tasks))
+            for cl in subset:
+                print(f'Class{cl:2d} = | {ap[cl]:6.3f} | {accuracys[cl].avg:6.3f} |')
+            # print(' *{:s} Task {:d}: Accuracy {accuracy.avg:.3f} Loss {loss.avg:.4f}'.format('**' if t==cur_t else '', cur_t, accuracy=accuracy, loss=losses))
+            mAP_cur_t = ap[subset].mean().item()
+            print(' *{:s} Task {:d}: mAP {mAP:.3f}'.format('**' if t==cur_t else '', cur_t, mAP=mAP_cur_t))
+            if cur_t <= t:
+                seen_subset = np.unique(np.concatenate((seen_subset, subset)))
+            if cur_t == t:
+                mAP_t = mAP_cur_t
+            
+        mean_ap = ap.mean().item()
+        print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(mean_ap, accuracy.avg, losses.avg))
+        seen_mAP = ap[seen_subset].mean().item()
+        print(f'===Seen Labels {seen_subset}: mean_AP {seen_mAP:3f}')
         print()
-        return (tol_accu / tol_tasks), (tol_ap/20)
+        return accuracy.avg, mean_ap, seen_mAP, mAP_t
 
     def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
@@ -210,8 +248,10 @@ class Approach(object):
 
         if stat == 'train':
             output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
+        elif stat == 'test':
+            output = output.cpu().numpy()
         else:
-            output = output.cpu().numpy()[:,self.Tasks[t]['test_subset']]
+            raise NotImplementedError
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()
