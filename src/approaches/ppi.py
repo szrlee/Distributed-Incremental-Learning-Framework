@@ -361,6 +361,7 @@ class Approach(object):
                     accuracys[cl].update(reduced_accus[cl], input.size(0))
         
         seen_subset = np.empty(0, dtype=int)
+        mAP_t = 0.0
         for cur_t in range(tol_tasks):
             subset = self.Tasks[cur_t]['test_subset']
             ap = APs.value() * 100.0
