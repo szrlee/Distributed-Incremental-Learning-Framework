@@ -110,6 +110,9 @@ class Approach(object):
         # for prefetch memory for cache
         self.cur_t = -1
 
+        # alternate updating
+        self.n_sub_iter = 3
+
     def solve(self, t):
         self.cur_t = t
         # load best model in previous task (Start from the second task)
@@ -195,7 +198,7 @@ class Approach(object):
         loss.backward(retain_graph=True)
         return self.base_params
 
-    def update_task_param(self, output, target, epoch):
+    def update_task_param(self, output, target, epoch, iter, sub_iter):
         self.optimizer.zero_grad()
         self.optim_fc.zero_grad()
         # subset = np.empty(0, dtype=int)
@@ -234,11 +237,12 @@ class Approach(object):
             target = target.to(self.device)
             input = input.to(self.device)
 
-            # compute output
-            output = self.model(input)
-            output = torch.sigmoid(output)
-            # update task specific param
-            self.update_task_param(output, target, epoch)
+            for sub_i in range(self.n_sub_iter):
+                # compute output
+                output = self.model(input)
+                output = torch.sigmoid(output)
+                # update task specific param
+                self.update_task_param(output, target, epoch, i, sub_i)
 
             # ================================================================= #
             # compute grad for previous tasks
