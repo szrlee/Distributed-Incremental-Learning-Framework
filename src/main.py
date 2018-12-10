@@ -46,6 +46,7 @@ from approaches import joint_train
 from approaches import finetune
 from approaches import finetune_aug
 from approaches import lwf
+from approaches import lwf_aug
 from approaches import ppi
 from approaches import lwf_ppi
 
@@ -75,6 +76,10 @@ def main():
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'lwf':
         approach = lwf
+        assert(args.memory_size is None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'lwf_aug':
+        approach = lwf_aug
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'ppi':
