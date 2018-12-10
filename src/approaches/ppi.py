@@ -233,11 +233,12 @@ class Approach(object):
             # compute output
             output = self.model(input)
             output = torch.sigmoid(output)
+            # update task specific param
+            self.update_task_param(output, target, epoch)
 
             # ================================================================= #
             # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
-                self.update_task_param(output, target, epoch)
                 # compute grad for pre observed tasks
                 for pre_t in self.solved_tasks:
                     ## compute gradient for few samples in previous tasks
