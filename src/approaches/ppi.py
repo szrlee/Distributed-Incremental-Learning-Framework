@@ -310,15 +310,15 @@ class Approach(object):
             batch_time.update(time.time() - end)
             end = time.time()
 
-            if i % self.print_freq == 0:
+            if (i+1) % self.print_freq == 0 or (i+1) == len(train_loader):
                 print('Epoch: [{0}][{1}/{2}]\t'
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
-                      '#Proj [{count_vio}]'.format(
-                          epoch, i, len(train_loader), batch_time=batch_time,
+                      '#Proj [{count_vio}/{batch_cnt}]'.format(
+                          epoch, i+1, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy,
-                          count_vio=count_vio))
+                          count_vio=count_vio), batch_cnt=len(train_loader))
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
