@@ -388,8 +388,10 @@ class Approach(object):
 
         if stat == 'train':
             output = output.cpu().numpy()[:,self.Tasks[t]['train_subset']]
+        elif stat == 'test':
+            output = output.cpu().numpy()
         else:
-            output = output.cpu().numpy()[:,self.Tasks[t]['test_subset']]
+            raise NotImplementedError
         output = np.where(output > 0.5, 1, 0)
         pred = torch.from_numpy(output).long().cuda()
         target = target.long()
