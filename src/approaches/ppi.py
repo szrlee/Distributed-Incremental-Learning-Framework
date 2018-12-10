@@ -137,7 +137,7 @@ class Approach(object):
         self.sche_fc = torch.optim.lr_scheduler.MultiStepLR(self.optim_fc, milestones=[8], gamma=0.1)
 
         print("Evaluate the Initialization model")
-        self.validate(t=-1, epoch=-1)
+        self.validate(t=t-1, epoch=-1)
         print('=' * 100)
 
         # cycle epoch training
@@ -315,10 +315,10 @@ class Approach(object):
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
-                      '#Surr [{count_vio}/{batch_cnt}]'.format(
+                      '#Proj [{count_vio}]'.format(
                           epoch, i, len(train_loader), batch_time=batch_time,
                           loss=losses, accuracy=accuracy,
-                          count_vio=count_vio, batch_cnt=len(train_loader)))
+                          count_vio=count_vio))
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
