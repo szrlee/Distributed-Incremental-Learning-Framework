@@ -57,6 +57,16 @@ def unfreeze_model(model):
         param.requires_grad = True
     return
 
+def freeze_param(params):
+    for param in params:
+        param.requires_grad = False
+    return
+
+def unfreeze_param(params):
+    for param in params:
+        param.requires_grad = True
+    return
+
 ########################################################################################################################
 
 def compute_conv_output_size(Lin,kernel_size,stride=1,padding=0,dilation=1):

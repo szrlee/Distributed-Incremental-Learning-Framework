@@ -202,9 +202,9 @@ class Approach(object):
         self.optimizer.zero_grad()
         self.optim_fc.zero_grad()
         # subset = np.empty(0, dtype=int)
-        # freeze head
-        for param in self.base_params:
-            param.requires_grad = False
+        # # freeze head
+        # for param in self.base_params:
+        #     param.requires_grad = False
         # compute loss
         subset = self.Tasks[self.cur_t]['test_subset']
         loss = self.criterion(output[:,subset], target[:,subset])
@@ -217,9 +217,9 @@ class Approach(object):
         loss.backward(retain_graph=True)
         # fc layer update
         self.optim_fc.step()
-        # unfreeze head
-        for param in self.base_params:
-            param.requires_grad = True
+        # # unfreeze head
+        # for param in self.base_params:
+        #     param.requires_grad = True
         return self.base_params
 
     def train(self, t, train_loader, epoch):
@@ -237,13 +237,22 @@ class Approach(object):
             target = target.to(self.device)
             input = input.to(self.device)
 
+            # ================================================================= #
+            # subiteration for task spec param
+            utils.freeze_param(self.base_params)
             for sub_i in range(self.n_sub_iter):
                 # compute output
                 output = self.model(input)
                 output = torch.sigmoid(output)
                 # update task specific param
                 self.update_task_param(output, target, epoch, i, sub_i)
+            utils.unfreeze_param(self.base_params)
+            # ================================================================= #
 
+            # ================================================================= #
+            # compute output
+            output = self.model(input)
+            output = torch.sigmoid(output)
             # ================================================================= #
             # compute grad for previous tasks
             if len(self.solved_tasks) > 0:
@@ -253,8 +262,6 @@ class Approach(object):
                     pre_param = self.compute_pre_param(pre_t, output, target, epoch)
                     ## store prev grad to tensor
                     store_grad(pre_param, self.grads, self.grad_dims, pre_t)
-
-
             # ================================================================= #
             # compute grad for current task
             subset = self.Tasks[t]['test_subset']
