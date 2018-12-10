@@ -49,6 +49,8 @@ from approaches import lwf
 from approaches import lwf_aug
 from approaches import ppi
 from approaches import lwf_ppi
+from approaches import lwf_aug_ppi
+
 
 # Args -- Network
 from networks import resnet
@@ -88,6 +90,10 @@ def main():
         assert(args.memory_mini_batch_size is None)
     elif args.approach == 'lwf_ppi':
         approach = lwf_ppi
+        assert(args.memory_size is None)
+        assert(args.memory_mini_batch_size is None)
+    elif args.approach == 'lwf_aug_ppi':
+        approach = lwf_aug_ppi
         assert(args.memory_size is None)
         assert(args.memory_mini_batch_size is None)
     else:

@@ -8,10 +8,73 @@ from meter.apmeter import APMeter
 
 from torch.utils.data import DataLoader
 
-class Approach(object):
-    """ Extending Learning Without Forgetting approach described in https://arxiv.org/abs/1606.09282
-        to multi label case
+######################################################################
+# Auxiliary functions useful for GEM's inner optimization.
+import quadprog
+
+def store_grad(pp, grads, grad_dims, tid):
     """
+        This stores parameter gradients of past tasks.
+        pp: parameters iterator
+        grads: gradients
+        grad_dims: list with number of parameters per layers
+        tid: task id
+    """
+    # store the gradients
+    grads[:, tid].fill_(0.0)
+    cnt = 0
+    for param in pp:
+        if param.grad is not None:
+            beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
+            en = sum(grad_dims[:cnt + 1])
+            grads[beg: en, tid].copy_(param.grad.data.view(-1))
+        cnt += 1
+
+
+def overwrite_grad(pp, newgrad, grad_dims):
+    """
+        This is used to overwrite the gradients with a new gradient
+        vector, whenever violations occur.
+        pp: parameters iterator
+        newgrad: corrected gradient
+        grad_dims: list storing number of parameters at each layer
+    """
+    cnt = 0
+    for param in pp:
+        if param.grad is not None:
+            beg = 0 if cnt == 0 else sum(grad_dims[:cnt])
+            en = sum(grad_dims[:cnt + 1])
+            this_grad = newgrad[beg: en].contiguous().view(
+                param.grad.data.size())
+            param.grad.data.copy_(this_grad)
+        cnt += 1
+
+
+def project2cone2(gradient, memories, margin=0.5, eps=1e-3):
+    """
+        Solves the GEM dual QP described in the paper given a proposed
+        gradient "gradient", and a memory of task gradients "memories".
+        Overwrites "gradient" with the final projected update.
+        input:  gradient, p-vector
+        input:  memories, (t * p)-vector
+        output: x, p-vector
+    """
+    memories_np = memories.cpu().t().double().numpy()
+    gradient_np = gradient.cpu().contiguous().view(-1).double().numpy()
+    t = memories_np.shape[0]
+    P = np.dot(memories_np, memories_np.transpose())
+    P = 0.5 * (P + P.transpose()) + np.eye(t) * eps
+    q = np.dot(memories_np, gradient_np) * -1
+    G = np.eye(t)
+    h = np.zeros(t) + margin
+    v = quadprog.solve_qp(P, q, G, h)[0]
+    x = np.dot(v, memories_np) + gradient_np
+    gradient.copy_(torch.Tensor(x).view(-1, 1))
+
+########################################################################
+# Model class description
+class Approach(object):
+    """ Projection as Pareto Inprovement """
 
     def __init__(self, model, args, Tasks):
         self.model = model
@@ -28,21 +91,21 @@ class Approach(object):
 
         self.save_seen_mAP = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPseenTasks_'+args.time+'.pt' for t in range(len(Tasks))]
         self.save_mAP_t = [args.save_dir+'/'+args.network+'_'+args.approach+'_TASK'+str(t)+'_bestmAPcurTask_'+args.time+'.pt' for t in range(len(Tasks))]
-        # distillation related parameters
-        self.model_old = None
-        self.balance = [1, 1]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
-        self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
-        print(f'distillation related parameters:\t'
-                f'balance lambdas = {self.balance}\t'
-                f'annelating factor T = {self.T}')
 
         # allocate temporary synaptic memory
         ignored_params_id_list = list(map(id, self.model.module.newfc.parameters()))
         # self.base_params = filter(lambda p: 'newfc' not in p[0], self.model.named_parameters())
         self.base_params = [p for p in self.model.module.parameters() if id(p) not in ignored_params_id_list]
 
+        self.grad_dims = []
+        for param in self.base_params:
+            if param.requires_grad:
+                self.grad_dims.append(param.data.numel())
+
         # auto-maintain the number of total tasks
         self.total_tasks = len(Tasks)
+        self.grads = torch.Tensor(sum(self.grad_dims), self.total_tasks).cuda()
+        self.margin = args.margin # regularization parameter
         self.solved_tasks = []
         # for prefetch memory for cache
         self.cur_t = -1
@@ -50,18 +113,40 @@ class Approach(object):
         # alternate updating
         self.n_sub_iter = 3
 
+        # distillation related parameters
+        self.online_model = True
+        self.old_models = [None]*(self.total_tasks-1)
+        self.model_old = None
+        self.balance = [1, 1]         # Grid search = [0.1, 0.5, 1, 2, 4, 8, 10]; best was 2
+        self.T = 1                # Grid search = [0.5,1,2,4]; best was 1
+        print(f'distillation related parameters:\t'
+                f'balance lambdas = {self.balance}\t'
+                f'annelating factor T = {self.T}')
+
     def solve(self, t):
         self.cur_t = t
         # load best model in previous task (Start from the second task)
         if t>0:
-            print(f"loading best model in previous task {t-1}")
+            # model init
+            print(f"loading best (seen_mAP) model in previous task {t-1}")
             checkpoint = torch.load(self.save_seen_mAP[t-1])
             self.model.module.load_state_dict(checkpoint['model_state_dict'])
             print(f"loading completed!")
+            # # load old model
+            # if self.online_model:
             # deep copy best prev_task model and freeze it
             self.model_old = deepcopy(self.model)
             utils.freeze_model(self.model_old)
-        
+            # else:
+            #     for pre_t in range(t):
+            #         self.old_models[pre_t] = deepcopy(self.model)
+            #         print(f"loading best (mAP_t) model in task {pre_t}")
+            #         checkpoint = torch.load(self.save_mAP_t[pre_t])
+            #         self.old_models[pre_t].module.load_state_dict(checkpoint['model_state_dict'])
+            #         print(f"loading old_models[{pre_t}] completed!")
+            #         utils.freeze_model(self.old_models[pre_t])
+            #         print(f"freeze old_models[{pre_t}] completed!")
+
         # prepare task specific object
         task = self.Tasks[t]
         train_loader = task['train_loader']
@@ -119,8 +204,22 @@ class Approach(object):
         print(f'Best mean AP for Curr Task=={t} at epoch {ep_best_mAP_t}: {best_mAP_t}')
         print(f'Best mean AP for Seen Task<={t} at epoch {ep_best_seen_mAP}: {best_seen_mAP}')
 
-
-
+        # finish solving current task and
+        # then append it to solved_tasks
+        if t not in self.solved_tasks:
+            self.solved_tasks.append(t)
+        
+    def compute_pre_param(self, t, output, output_old, target, epoch):
+        assert t != self.cur_t
+        self.optimizer.zero_grad()
+        self.optim_fc.zero_grad()
+        subset = self.Tasks[t]['test_subset']
+        # compute loss
+        loss = 0.5*self.criterion(output[:,subset], output_old[:,subset])
+        loss += 0.5*self.criterion(output[:,subset], target[:,subset])
+        # compute gradient
+        loss.backward(retain_graph=True)
+        return self.base_params, loss.data.item()
 
     def update_task_param(self, output, output_old, target, epoch, iter, sub_iter):
         self.optimizer.zero_grad()
@@ -135,7 +234,7 @@ class Approach(object):
         ## added with prev task loss
         for pre_t in self.solved_tasks:
             subset = self.Tasks[pre_t]['test_subset']
-            loss += 0.5*self.balance[i]*self.criterion(output[:,subset], output_old[:,subset])
+            loss += 0.5*self.criterion(output[:,subset], output_old[:,subset])
             loss += 0.5*self.criterion(output[:,subset], target[:,subset])
 
         # compute gradient and retain computation graph
@@ -149,19 +248,23 @@ class Approach(object):
 
     def train(self, t, train_loader, epoch):
         """Train for one epoch on the training set"""
+        assert(t==self.cur_t)
         batch_time = AverageMeter()
         losses = AverageMeter()
         accuracy = AverageMeter()
         # switch to train mode
         self.model.train()
-
+        count_vio = 0
         end = time.time()
         for i, (input, target) in enumerate(train_loader):
             target = target.to(self.device)
             input = input.to(self.device)
-            # compute output from freezed old model START the second task (t>0)
-            output_old = self.model_old(input) if t>0 else None
-            output_old = torch.sigmoid(output_old) if t>0 else None
+            # if self.online_model:
+            output_old = self.model_old(input) if self.model_old is not None else None
+            output_old = torch.sigmoid(output_old) if self.model_old is not None else None
+
+            # else:
+            #     raise NotImplementedError
             # ================================================================= #
             # subiteration for task spec param
             utils.freeze_param(self.base_params)
@@ -178,12 +281,55 @@ class Approach(object):
             # compute output
             output = self.model(input)
             output = torch.sigmoid(output)
-            loss_dict = self.lwf_criterion(t, output, output_old, target)
-            loss = loss_dict['total']
-            # compute gradient and do SGD step
+            # ================================================================= #
+            # compute grad for previous tasks
+            loss_distill = torch.tensor(0.0).cuda()
+            if len(self.solved_tasks) > 0:
+                # compute grad for pre observed tasks
+                for pre_t in self.solved_tasks:
+                    ## compute gradient for few samples in previous tasks
+                    pre_param, loss = self.compute_pre_param(pre_t, output, output_old, target, epoch)
+                    ## store prev grad to tensor
+                    store_grad(pre_param, self.grads, self.grad_dims, pre_t)
+                    ## compute distill loss
+                    loss_distill += self.balance[pre_t] * loss
+            # ================================================================= #
+            # compute grad for current task
+            subset = self.Tasks[t]['train_subset']
+            loss = self.criterion(output[:,subset], target)
+            # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
             self.optim_fc.zero_grad()
             loss.backward()
+
+            # ================================================================== #
+            # check grad and get new grad 
+            if len(self.solved_tasks) > 0:
+                # print("== BEGIN: check constraints; if violate, get surrogate grad.")
+                end_opt = time.time()
+                ## copy gradient for data at current task to a tensor and clear grad
+                store_grad(self.base_params, self.grads, self.grad_dims, t)
+                ## check if current step gradient violate constraints
+                indx = torch.cuda.LongTensor(self.solved_tasks)
+                dotp = torch.mm(self.grads[:, t].unsqueeze(0),
+                            self.grads.index_select(1, indx))
+                violate_constr = ((dotp < 0).sum() != 0)
+
+                ## use convex quadratic prorgamming to get surrogate grad
+                if violate_constr:
+                    # count violating times
+                    count_vio += 1
+                    # if violate, use quadprog to get new grad
+                    self.optimizer.zero_grad()
+                    self.optim_fc.zero_grad()
+                    project2cone2(self.grads[:, t].unsqueeze(1),
+                              self.grads.index_select(1, indx), self.margin)
+                    ## copy surrogate grad back to model gradient parameters
+                    overwrite_grad(self.base_params, self.grads[:, t],
+                               self.grad_dims)
+                # print(f"== END: violate constraints? : {violate_constr} | TIME: {time.time()-end_opt}")
+            # ================================================================= #
+            # then do SGD step
             self.optimizer.step()
 
             # measure accuracy and record loss
@@ -193,7 +339,7 @@ class Approach(object):
             reduced_accu = accu.clone()
             losses.update(reduced_loss.item(), input.size(0))
             accuracy.update(reduced_accu.item(), input.size(0))
-
+            
             # measure elapsed time
             batch_time.update(time.time() - end)
             end = time.time()
@@ -203,10 +349,12 @@ class Approach(object):
                       'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                       'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
                       'Acc {accuracy.val:.3f} ({accuracy.avg:.3f})\t'
-                      'distill {loss_distill:.4f}'.format(
+                      'distill {loss_distill:.4f}\t'
+                      '#Proj [{count_vio}/{batch_cnt}]'.format(
                           epoch, i+1, len(train_loader), batch_time=batch_time,
-                          loss=losses, accuracy=accuracy, 
-                          loss_distill=loss_dict['distill'].data.item()))
+                          loss=losses, accuracy=accuracy,
+                          loss_distill = loss_distill,
+                          count_vio=count_vio, batch_cnt=len(train_loader)))
 
     def validate(self, t, epoch):
         """Perform validation on the validation set"""
@@ -268,23 +416,6 @@ class Approach(object):
         print(f'===Seen Labels {seen_subset}: mean_AP {seen_mAP:3f}')
         print()
         return accuracy.avg, mean_ap, seen_mAP, mAP_t
-
-    def lwf_criterion(self, t, output, output_old, target):
-        # Knowledge distillation loss for all previous tasks
-        loss_distill = torch.tensor(0.0).cuda()
-        for t_old in range(0, t): # no distill loss if t = 0
-            loss_distill += self.balance[t_old] * self.criterion(
-                                        output[:,self.Tasks[t_old]['test_subset']],
-                                        output_old[:,self.Tasks[t_old]['test_subset']])
-
-        # Cross entropy loss
-        loss_new = self.criterion(output[:,self.Tasks[t]['train_subset']], target)
-
-        losses = {  'distill': loss_distill,
-                    'new': loss_new,
-                    'total': loss_new + loss_distill}
-        
-        return losses
 
     def cleba_accuracy(self, t, output, target, stat='test'):
         batch_size = target.size(0)
