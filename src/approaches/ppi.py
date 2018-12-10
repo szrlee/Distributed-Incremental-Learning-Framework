@@ -377,7 +377,7 @@ class Approach(object):
         mean_ap = ap.mean().item()
         print('===Total: mAP {:3f} Accuracy {:3f} Loss {:4f}'.format(mean_ap, accuracy.avg, losses.avg))
         seen_mAP = ap[seen_subset].mean().item()
-        print(f'===Seen Task {seen_subset}: mean_AP {seen_mAP:3f}')
+        print(f'===Seen Labels {seen_subset}: mean_AP {seen_mAP:3f}')
         print()
         return accuracy.avg, mean_ap, seen_mAP, mAP_t
 
