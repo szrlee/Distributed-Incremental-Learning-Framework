@@ -135,8 +135,8 @@ class Approach(object):
         ## added with prev task loss
         for pre_t in self.solved_tasks:
             subset = self.Tasks[pre_t]['test_subset']
-            loss += 0.5*self.balance[i]*self.criterion(output[:,subset], output_old[:,subset])
-            loss += 0.5*self.criterion(output[:,subset], target[:,subset])
+            loss += self.criterion(output[:,subset], output_old[:,subset])
+            loss += self.criterion(output[:,subset], target[:,subset])
 
         # compute gradient and retain computation graph
         loss.backward(retain_graph=True)

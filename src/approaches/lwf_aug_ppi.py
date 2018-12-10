@@ -215,8 +215,8 @@ class Approach(object):
         self.optim_fc.zero_grad()
         subset = self.Tasks[t]['test_subset']
         # compute loss
-        loss = 0.5*self.criterion(output[:,subset], output_old[:,subset])
-        loss += 0.5*self.criterion(output[:,subset], target[:,subset])
+        loss = self.criterion(output[:,subset], output_old[:,subset])
+        loss += self.criterion(output[:,subset], target[:,subset])
         # compute gradient
         loss.backward(retain_graph=True)
         return self.base_params, loss.data.item()
@@ -234,8 +234,8 @@ class Approach(object):
         ## added with prev task loss
         for pre_t in self.solved_tasks:
             subset = self.Tasks[pre_t]['test_subset']
-            loss += 0.5*self.criterion(output[:,subset], output_old[:,subset])
-            loss += 0.5*self.criterion(output[:,subset], target[:,subset])
+            loss += self.criterion(output[:,subset], output_old[:,subset])
+            loss += self.criterion(output[:,subset], target[:,subset])
 
         # compute gradient and retain computation graph
         loss.backward(retain_graph=True)
@@ -295,8 +295,8 @@ class Approach(object):
                     loss_distill += self.balance[pre_t] * loss
             # ================================================================= #
             # compute grad for current task
-            subset = self.Tasks[t]['train_subset']
-            loss = self.criterion(output[:,subset], target)
+            subset = self.Tasks[t]['test_subset']
+            loss = self.criterion(output[:,subset], target[:,subset])
             # compute gradient within constraints and backprop errors
             self.optimizer.zero_grad()
             self.optim_fc.zero_grad()
