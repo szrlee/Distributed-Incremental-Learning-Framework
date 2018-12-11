@@ -48,7 +48,7 @@ class Approach(object):
         self.cur_t = -1
 
         # alternate updating
-        self.n_sub_iter = 3
+        self.n_sub_iter = 6
 
     def solve(self, t):
         self.cur_t = t
