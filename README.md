@@ -1,13 +1,14 @@
 # Distributed Framework for Incremental and Continual Learning
 
-Currently suppoty *only* the CelebA Dataset for the setting of incremental adding label. (Incremental Multi-Class Multi-Label)
+Currently suppot *only* the Pascal VOC based partition tasks for the setting of incremental multi label continual learning. (Incremental Multi-Class Multi-Label)
 
 ### How to run
+Require pytorch 0.4.1
 To replicate the experiments, execute
 ```bash
 $ source source.sh
 $ cd src/
-$ ./train.sh {lwf, gem, joint_train, fine_tuning}
+$ ./train_{approach}.sh
 ```
 
 ### Acknowlegement
