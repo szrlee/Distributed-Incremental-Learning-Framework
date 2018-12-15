@@ -1,8 +1,9 @@
 #!/usr/bin/env sh
+appr=lwf_ppi
 network='res18'
 now=$(date +"%Y%m%d_%H%M%S")
-appr='finetune'
 echo $network
 echo $now
-python main.py --experiment=voc --approach=$appr --epochs 15 --time=$now --network=$network --pretrain  \
+python main.py --experiment=voc --approach=$appr --epochs 15 --network=$network --time=$now --pretrain  \
 2>&1|tee ../res/log/voc-$appr-$network-$now.log 
+
