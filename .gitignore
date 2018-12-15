@@ -12,3 +12,6 @@
 *.log
 *.ods
 .vscode/
+
+# jupyter noterbook
+res/log/.ipynb_checkpoints/*
