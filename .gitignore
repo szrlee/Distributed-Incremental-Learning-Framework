@@ -3,7 +3,6 @@
 *.pdf
 *.bin
 *.pt
-*.txt
 *.pyc
 *.npz
 *.jpg
@@ -14,4 +13,4 @@
 .vscode/
 
 # jupyter noterbook
-res/log/.ipynb_checkpoints/*
+*ipynb_checkpoints*
